@@ -4,6 +4,7 @@ test-results.txt
 dsl.sqlite
 dsl.sqlite.*.bak
 data/
+generated/
 # Logs
 logs
 *.log

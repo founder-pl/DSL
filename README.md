@@ -17,15 +17,21 @@ System służy do:
 
 | Funkcja                        | Opis                                                                                                                      |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
-| **Edytor YAML**                | Możliwość tworzenia i edycji workflow w formacie YAML. Workflow definiuje kroki, akcje i moduły.                          |
-| **Edytor NLP (zdania)**        | System przetwarza naturalny język i zamienia zdania na kroki workflow.                                                    |
-| **Diagram Workflow (Mermaid)** | Wizualizacja kroków workflow i zależności między nimi. Diagram jest interaktywny – kliknięcie akcji wyzwala zdarzenie.    |
-| **CQRS + Event Sourcing**      | Oddzielenie logiki komend od stanu systemu. Komendy → zdarzenia → aktualizacja Read Model.                                |
-| **Event Store**                | Zapis wszystkich zdarzeń (akcje wykonane w workflow, timestamp, status).                                                  |
-| **Read Model**                 | Tabela pokazująca stan akcji, status i timestamp. Odzwierciedla aktualny stan workflow.                                   |
-| **Log akcji**                  | Historia wykonanych akcji, przydatna do debugowania i monitorowania.                                                      |
-| **Mapowanie modułów**          | Automatyczne przypisywanie kroków do modułów na podstawie słów kluczowych (np. płatności → Platnosci, faktura → Finanse). |
-| **Interaktywność diagramu**    | Kliknięcie w węzeł wyzwala komendę, dodaje zdarzenie do Event Store i aktualizuje Read Model.                             |
+| **Edytor YAML**                | Tworzenie i edycja workflow w YAML.                                                                                       |
+| **Edytor NLP (zdania)**        | Przetwarza naturalny język na kroki workflow; batch NLP dla wielu zdań.                                                   |
+| **Analiza dogłębna (NLP)**     | API `/api/analysis/deep` – analiza swobodnych fraz, sugeruje workflow i generuje skrypty (bash/node/python/browser).       |
+| **Diagram Workflow (Mermaid)** | Wizualizacja kroków workflow. Interaktywny – kliknięcie akcji wyzwala zdarzenie.                                           |
+| **CQRS + Event Sourcing**      | Komendy → zdarzenia → Read Model.                                                                                         |
+| **Event Store / Read Model**   | Zapis zdarzeń i odczyt stanu.                                                                                              |
+| **Log akcji**                  | Historia akcji (timestamp, status).                                                                                       |
+| **Mapowanie modułów**          | Automatyczne przypisywanie modułów wg słów kluczowych.                                                                    |
+| **SQLite DB (persistence)**    | `data/dsl.sqlite`; API: download/upload/validate; odporność na `SQLITE_NOTADB`.                                           |
+| **Serializer (JSON/YAML)**     | API eksport/import z wersjonowaniem i migracjami.                                                                          |
+| **Projekcje**                  | API projekcji (overview/timeline/workflows).                                                                               |
+| **Sugestie**                   | API sugestii modułów i kroków.                                                                                             |
+| **Historia (undo/redo)**       | Snapshot/restore EventStore i Read Model.                                                                                  |
+| **Scenariusze i skrypty**      | UI + API do podziału `procesy.txt` na domeny, generowania YAML/diagramów/skryptów, uruchamiania skryptów.                 |
+| **Docker/Compose**             | Serwer + e2e runner; wolumen `generated/`.                                                                                 |
 
 ---
 
@@ -169,3 +175,95 @@ steps:
    | wystaw fakturę | done | 2025-11-22T12:00:00Z |
    | uruchom kampanię retargetingową | done | 2025-11-22T12:00:00Z |
 
+---
+
+## 9. **Backend API – skrót**
+
+- Workflow
+  - `POST /api/workflow/nlp` – utwórz workflow ze zdania „Gdy …, …”.
+  - `POST /api/workflow/nlp/batch` – przetwarzanie wielu zdań na raz (diagramy w odpowiedzi).
+  - `POST /api/workflow/action` – wykonaj akcję (zapis do Event Store i Read Model).
+  - `GET /api/workflow/workflows|events|readmodel|statistics` – odczyt.
+  - `POST /api/workflow/validate` – walidacja struktury workflow.
+  - `GET /api/workflow/duplicates` – wykryj duplikaty po `id`.
+
+- Analiza
+  - `POST /api/analysis/deep` – analiza swobodnych fraz (intencje, proponowany workflow, generacja skryptów).
+
+- Serializer
+  - `GET /api/serializer/export?format=json|yaml&dedupe=true|false`
+  - `POST /api/serializer/import` – `{ format, data }`.
+
+- Baza danych (SQLite)
+  - `GET /api/db/download` – pobierz plik bazy.
+  - `POST /api/db/upload` – wgraj bazę (base64).
+  - `GET /api/db/validate` – sprawdzenie istnienia/ścieżki.
+
+- Projekcje
+  - `GET /api/projections/overview|timeline|workflows`
+
+- Sugestie
+  - `POST /api/suggestions/modules` – sugestie modułów na podstawie tekstu.
+  - `POST /api/suggestions/sentence` – analiza zdania i rekomendacje.
+
+- Scenariusze/Procesy
+  - `GET /api/processes/split` – podziel `procesy.txt` na domeny (zapis do `generated/domains/*.txt`).
+  - `POST /api/processes/generate?domain=all|<Domena>&baseUrl=<URL>` – generuj YAML/diagramy/skrypty.
+  - `GET /api/processes/list` – lista artefaktów w `generated/`.
+  - `GET /api/processes/archive` – archiwum `generated.tar.gz`.
+  - `POST /api/exec/:lang/:action` – uruchom wygenerowany skrypt (`bash|node|python`).
+
+- Mock API dla skryptów
+  - `POST /api/mock/send-email`, `POST /api/mock/generate-invoice`, `GET /api/mock/invoice/:id`, `GET /api/mock/fetch-page`, `POST /api/mock/generate-report`.
+
+---
+
+## 10. **Scenariusze i skrypty – przepływ**
+
+1. Podziel procesy: `GET /api/processes/split` lub przycisk w UI.
+2. Wygeneruj artefakty: `POST /api/processes/generate?domain=all`.
+3. Uruchamiaj skrypty: `POST /api/exec/bash|node|python/:action` lub z poziomu UI.
+4. Pobierz całość: `GET /api/processes/archive`.
+
+W UI dostępna sekcja „Scenariusze i Skrypty” (lista plików, uruchamianie, podgląd YAML/diagramu domeny).
+
+---
+
+## 11. **Docker / docker-compose**
+
+```
+docker compose up --build
+```
+
+- Serwis `dsl`: serwer HTTP (port 3000), healthcheck `/api/health`.
+- Serwis `e2e`: po przejściu healthchecka uruchamia testy e2e procesów.
+- Wolumen `./generated` – artefakty na hoście.
+
+---
+
+## 12. **Testy i status implementacji**
+
+- Uruchamianie: `make test`.
+  - Wykonywane są testy backend, frontend, integracyjne oraz e2e (w tym `e2e-processes` i `e2e-domains-diagrams`).
+- Dodatkowo testy można uruchamiać selektywnie (`test-backend`, `test-frontend`, `test-integration`).
+
+### Status (skrót)
+- [x] Główne funkcje z sekcji 2 (YAML, NLP, diagramy, CQRS/ES, log, mapowanie modułów, interaktywność).
+- [x] DB SQLite z walidacją i importem/eksportem przez UI/API (odporność na `SQLITE_NOTADB`).
+- [x] Serializer JSON/YAML z migracjami + deduplikacja eksportu.
+- [x] Projekcje, Sugestie, Historia snapshot/undo/redo.
+- [x] Batch NLP i wizualizacja wielu diagramów.
+- [x] Scenariusze i skrypty (podział domen, generacja YAML/diagramów/skryptów, uruchamianie skryptów, archiwum).
+- [x] Analiza dogłębna (fallback dla swobodnych fraz) – `/api/analysis/deep`.
+- [x] Docker/Compose + e2e runner.
+- [ ] Zaawansowana interaktywna edycja workflow (drag&drop) – do rozważenia.
+- [ ] Zewnętrzne powiadomienia produkcyjne (obecnie mock + webhooki podstawowe).
+
+---
+
+## 13. **Szybki start**
+
+1. `make install`
+2. `make server` lub `docker compose up --build`
+3. UI: `http://localhost:3000`
+4. Testy: `make test`

@@ -20,6 +20,7 @@ import fs from 'fs';
 import { spawn } from 'child_process';
 import { findDuplicateWorkflows } from '../core/validator.js';
 import { generateJSFromDSL, buildScaffolds, toWorkflows } from '../core/generator.js';
+import { deepAnalyze } from '../core/deep-analysis.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -38,6 +39,49 @@ class DSLServer {
         this.history = new HistoryManager();
         this.setupRoutes();
         this.setupErrorHandling();
+    }
+
+    // Deep analysis endpoint: accepts free-form text and returns intents/suggestions
+    setupAnalysisRoutes(){
+        const router = express.Router();
+        const ensureDir = (p) => { try { fs.mkdirSync(p, { recursive: true }); } catch(_){} };
+        const writeFile = (p, data) => fs.writeFileSync(p, data);
+
+        router.post('/deep', async (req, res) => {
+            try{
+                const { text, options = {}, generate = false, applyWorkflow = false } = req.body || {};
+                if (!text || typeof text !== 'string') return res.status(400).json({ error:'text required' });
+                const baseUrl = options.baseUrl || `${req.protocol}://${req.get('host')}`;
+                const analysis = deepAnalyze(text, { baseUrl });
+                if (!analysis.success) return res.status(400).json(analysis);
+
+                let files = [];
+                let workflowApplied = false;
+                if (applyWorkflow && analysis.suggestedWorkflow){
+                    // apply to engine and persist
+                    const wf = analysis.suggestedWorkflow;
+                    this.engine._eventStore = this.engine._eventStore || []; // safeguard
+                    this.engine._readModel = this.engine._readModel || [];
+                    // create as if NLP created it
+                    await this.engine.createWorkflowFromNLP(`Gdy ${wf.name}, ${wf.actions.map(a=>a.name).join(' i ')}`);
+                    const wfEvent = this.engine.getEventsByType('WorkflowCreated').slice(-1)[0];
+                    if (wfEvent?.payload) await saveWorkflow(wfEvent.payload);
+                    workflowApplied = true;
+                }
+
+                if (generate && analysis.suggestedWorkflow){
+                    const scaff = buildScaffolds({ workflows: [ analysis.suggestedWorkflow ] }, baseUrl);
+                    const writeScaff = (arr)=>{ for (const f of arr){ const full = join(projectRoot, f.filename); ensureDir(dirname(full)); writeFile(full, f.content); try{ if (full.endsWith('.sh')) fs.chmodSync(full, 0o755); }catch(_){} files.push(full); } };
+                    writeScaff(scaff.bash); writeScaff(scaff.node); writeScaff(scaff.browser); writeScaff(scaff.python);
+                }
+
+                return res.json({ ...analysis, files, workflowApplied });
+            }catch(e){
+                return res.status(500).json({ error:'deep analysis failed', message: e.message });
+            }
+        });
+
+        this.app.use('/api/analysis', router);
     }
     
     setupMiddleware() {
@@ -97,6 +141,8 @@ class DSLServer {
         this.setupMockRoutes();
         // Exec generated scripts
         this.setupExecRoutes();
+        // Deep analysis routes
+        this.setupAnalysisRoutes();
         
         // Testing routes
         this.setupTestingRoutes();

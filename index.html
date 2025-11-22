@@ -487,30 +487,53 @@ steps:
     document.getElementById("sentence-btn").addEventListener("click",async ()=>{
         const sentence = document.getElementById("sentence-editor").value;
         if(!sentence) return;
-        // Try server persistence first
+        // 1) Spróbuj standardowego NLP na backendzie
         try{
             const resp = await fetch('/api/workflow/nlp', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ sentence })
             });
-            if (!resp.ok) throw new Error('HTTP '+resp.status);
-            const data = await resp.json();
-            const wfEvent = data.workflow;
-            if (!wfEvent || !wfEvent.payload) throw new Error('Brak workflow payload');
-            const payload = wfEvent.payload;
-            const workflow = jsyaml.load(document.getElementById("yaml-editor").value);
-            workflow.steps.push({
-                id: payload.id,
-                name: payload.name,
-                module: payload.module,
-                actions: payload.actions
+            if (resp.ok){
+                const data = await resp.json();
+                const wfEvent = data.workflow;
+                if (!wfEvent || !wfEvent.payload) throw new Error('Brak workflow payload');
+                const payload = wfEvent.payload;
+                const workflow = jsyaml.load(document.getElementById("yaml-editor").value);
+                workflow.steps.push({ id: payload.id, name: payload.name, module: payload.module, actions: payload.actions });
+                document.getElementById("yaml-editor").value = jsyaml.dump(workflow);
+                renderDiagram(workflow);
+                payload.actions.forEach(a=>sendCommand(a.name));
+                document.getElementById("sentence-editor").value="";
+                return;
+            }
+            // jeśli 4xx/5xx – przejdź do deep analysis
+        }catch(_){ /* ignore and try deep analysis */ }
+
+        // 2) Deep Analysis API dla swobodnych zdań
+        try{
+            const resp2 = await fetch('/api/analysis/deep', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: sentence, options: { baseUrl: location.origin }, generate: true, applyWorkflow: true })
             });
-            document.getElementById("yaml-editor").value = jsyaml.dump(workflow);
-            renderDiagram(workflow);
-            payload.actions.forEach(a=>sendCommand(a.name));
-            document.getElementById("sentence-editor").value="";
-        }catch(err){
-            // Fallback to local processing
+            const data2 = await resp2.json();
+            if (!resp2.ok || !data2.success){ throw new Error(data2.error || data2.message || 'Deep analysis failed'); }
+
+            if (data2.suggestedWorkflow){
+                const s = data2.suggestedWorkflow;
+                const wf = jsyaml.load(document.getElementById("yaml-editor").value);
+                wf.steps.push({ id: s.id, name: s.name, module: s.module, actions: s.actions });
+                document.getElementById("yaml-editor").value = jsyaml.dump(wf);
+                renderDiagram(wf);
+                (s.actions||[]).forEach(a=>sendCommand(a.name));
+                document.getElementById("sentence-editor").value="";
+                if (Array.isArray(data2.files) && data2.files.length){
+                    alert(`Analiza dogłębna: wygenerowano ${data2.files.length} plików skryptów/akcji.`);
+                }
+                return;
+            }
+            throw new Error('Brak sugerowanego workflow z analizy');
+        }catch(errDeep){
+            // 3) Ostateczny fallback: lokalny parser "Gdy ..., ..."
             try{
                 const parsed = parseSentence(sentence);
                 const step = buildStep(parsed.condition, parsed.actions, sanitizer, mapper);
@@ -520,7 +543,7 @@ steps:
                 renderDiagram(workflow);
                 step.actions.forEach(a=>sendCommand(a.name));
                 document.getElementById("sentence-editor").value="";
-            }catch(e){ alert("Błąd: "+e.message); }
+            }catch(e){ alert("Błąd: "+(errDeep?.message||e.message)); }
         }
     });
 
