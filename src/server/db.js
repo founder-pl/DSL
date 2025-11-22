@@ -116,23 +116,37 @@ export function saveWorkflow(workflow) {
   const db = getDB();
   return new Promise((resolve, reject) => {
     db.serialize(() => {
+      const stepId = workflow.id;
+      
+      // Delete existing actions and steps for this workflow to ensure clean update
+      db.run(`DELETE FROM actions WHERE step_id = ?`, [stepId]);
+      db.run(`DELETE FROM steps WHERE workflow_id = ?`, [workflow.id]);
+      
+      // Insert or update workflow
       db.run(
         `INSERT OR REPLACE INTO workflows(id, name, module, created_at) VALUES(?,?,?,?)`,
         [workflow.id, workflow.name, workflow.module, new Date().toISOString()]
       );
+      
+      // Insert step (synthetic, one per workflow)
+      db.run(
+        `INSERT INTO steps(id, workflow_id, name, module, order_index) VALUES(?,?,?,?,?)`,
+        [stepId, workflow.id, workflow.name, workflow.module, 0]
+      );
+      
+      // Insert actions
       (workflow.actions || []).forEach((action, idx) => {
-        // Create synthetic step and action rows if not present
-        const stepId = workflow.id; // single-step per workflow from NLP
         db.run(
-          `INSERT OR REPLACE INTO steps(id, workflow_id, name, module, order_index) VALUES(?,?,?,?,?)`,
-          [stepId, workflow.id, workflow.name, workflow.module, 0]
-        );
-        db.run(
-          `INSERT OR REPLACE INTO actions(id, step_id, name, module, order_index) VALUES(?,?,?,?,?)`,
-          [action.id, stepId, action.name, action.module || 'Default', idx]
+          `INSERT INTO actions(id, step_id, name, module, order_index) VALUES(?,?,?,?,?)`,
+          [action.id, stepId, action.name, action.module || 'Default', idx],
+          (err) => {
+            if (err && idx === (workflow.actions.length - 1)) reject(err);
+          }
         );
       });
-      resolve(true);
+      
+      // Resolve after all inserts
+      setTimeout(() => resolve(true), 10);
     });
   });
 }

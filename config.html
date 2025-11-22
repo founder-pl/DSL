@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <title>⚙️ Konfiguracja DSL - Founder.pl</title>
+  <link rel="icon" href="data:,">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      overflow: hidden;
+    }
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 30px;
+      text-align: center;
+    }
+    .header h1 { font-size: 32px; margin-bottom: 10px; }
+    .header p { font-size: 16px; opacity: 0.9; }
+    
+    .content {
+      padding: 30px;
+    }
+    
+    .section {
+      background: #f8f9fa;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+      border: 1px solid #e0e0e0;
+    }
+    
+    .section h2 {
+      font-size: 18px;
+      margin-bottom: 15px;
+      color: #333;
+    }
+    
+    .form-group {
+      margin-bottom: 15px;
+    }
+    
+    .form-group label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: #555;
+      margin-bottom: 5px;
+    }
+    
+    .form-group input, .form-group select, .form-group textarea {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 14px;
+      font-family: inherit;
+    }
+    
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+    
+    .form-group small {
+      display: block;
+      margin-top: 5px;
+      color: #666;
+      font-size: 12px;
+    }
+    
+    .btn {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      transition: transform 0.2s;
+      margin-right: 10px;
+    }
+    
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+    }
+    
+    .btn-secondary {
+      background: #6c757d;
+    }
+    
+    .btn-success {
+      background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+    }
+    
+    .btn-danger {
+      background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%);
+    }
+    
+    .alert {
+      padding: 12px;
+      border-radius: 6px;
+      margin-bottom: 15px;
+      font-size: 14px;
+    }
+    
+    .alert-success {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+    
+    .alert-error {
+      background: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+    
+    .alert-info {
+      background: #d1ecf1;
+      color: #0c5460;
+      border: 1px solid #bee5eb;
+    }
+    
+    .actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+      flex-wrap: wrap;
+    }
+    
+    .code-preview {
+      background: #1e1e1e;
+      color: #d4d4d4;
+      padding: 15px;
+      border-radius: 8px;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      max-height: 400px;
+      overflow-y: auto;
+      margin-top: 15px;
+    }
+    
+    .tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+      border-bottom: 2px solid #e0e0e0;
+    }
+    
+    .tab {
+      padding: 12px 24px;
+      cursor: pointer;
+      border: none;
+      background: none;
+      font-size: 14px;
+      font-weight: 600;
+      color: #666;
+      border-bottom: 3px solid transparent;
+      transition: all 0.2s;
+    }
+    
+    .tab:hover {
+      color: #667eea;
+    }
+    
+    .tab.active {
+      color: #667eea;
+      border-bottom-color: #667eea;
+    }
+    
+    .tab-content {
+      display: none;
+    }
+    
+    .tab-content.active {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>⚙️ Konfiguracja DSL</h1>
+      <p>Automatyczne formularze konfiguracji nadpisujące .env</p>
+    </div>
+    
+    <div class="content">
+      <div id="status-message"></div>
+      
+      <div class="tabs">
+        <button class="tab active" onclick="switchTab('server')">🖥️ Serwer</button>
+        <button class="tab" onclick="switchTab('email')">📧 Email</button>
+        <button class="tab" onclick="switchTab('integrations')">🔗 Integracje</button>
+        <button class="tab" onclick="switchTab('advanced')">⚙️ Zaawansowane</button>
+        <button class="tab" onclick="switchTab('preview')">👁️ Podgląd .env</button>
+      </div>
+      
+      <!-- Tab: Server -->
+      <div id="tab-server" class="tab-content active">
+        <div class="section">
+          <h2>Konfiguracja Serwera</h2>
+          <div class="form-group">
+            <label>Środowisko (NODE_ENV):</label>
+            <select id="NODE_ENV">
+              <option value="development">Development</option>
+              <option value="production">Production</option>
+              <option value="test">Test</option>
+            </select>
+            <small>Tryb działania aplikacji</small>
+          </div>
+          <div class="form-group">
+            <label>Port (PORT):</label>
+            <input type="number" id="PORT" value="3000" min="1" max="65535">
+            <small>Port na którym działa serwer (domyślnie 3000)</small>
+          </div>
+          <div class="form-group">
+            <label>Host (HOST):</label>
+            <input type="text" id="HOST" value="0.0.0.0">
+            <small>Adres IP serwera (0.0.0.0 = wszystkie interfejsy)</small>
+          </div>
+          <div class="form-group">
+            <label>Ścieżka bazy danych (DB_PATH):</label>
+            <input type="text" id="DB_PATH" value="./data/dsl.sqlite">
+            <small>Lokalizacja pliku SQLite</small>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Tab: Email -->
+      <div id="tab-email" class="tab-content">
+        <div class="section">
+          <h2>Konfiguracja Email (SMTP)</h2>
+          <div class="form-group">
+            <label>Host SMTP (SMTP_HOST):</label>
+            <input type="text" id="SMTP_HOST" placeholder="smtp.gmail.com">
+            <small>Serwer SMTP (np. smtp.gmail.com, smtp-mail.outlook.com)</small>
+          </div>
+          <div class="form-group">
+            <label>Port SMTP (SMTP_PORT):</label>
+            <input type="number" id="SMTP_PORT" value="587" min="1" max="65535">
+            <small>Port SMTP (587 dla TLS, 465 dla SSL)</small>
+          </div>
+          <div class="form-group">
+            <label>Użytkownik SMTP (SMTP_USER):</label>
+            <input type="email" id="SMTP_USER" placeholder="user@example.com">
+            <small>Email konta SMTP</small>
+          </div>
+          <div class="form-group">
+            <label>Hasło SMTP (SMTP_PASS):</label>
+            <input type="password" id="SMTP_PASS">
+            <small>Hasło lub App Password dla SMTP</small>
+          </div>
+          <div class="form-group">
+            <label>Nadawca (SMTP_FROM):</label>
+            <input type="email" id="SMTP_FROM" placeholder="noreply@founder.pl">
+            <small>Adres email nadawcy</small>
+          </div>
+          <div class="form-group">
+            <label>Domyślny odbiorca (EMAIL_TO):</label>
+            <input type="email" id="EMAIL_TO" placeholder="admin@example.com">
+            <small>Domyślny adres do powiadomień</small>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Tab: Integrations -->
+      <div id="tab-integrations" class="tab-content">
+        <div class="section">
+          <h2>💬 Slack</h2>
+          <div class="form-group">
+            <label>Webhook URL (SLACK_WEBHOOK_URL):</label>
+            <input type="url" id="SLACK_WEBHOOK_URL" placeholder="https://hooks.slack.com/services/...">
+            <small>URL webhooka Slack z https://api.slack.com/apps</small>
+          </div>
+          <div class="form-group">
+            <label>Kanał (SLACK_CHANNEL):</label>
+            <input type="text" id="SLACK_CHANNEL" value="#general">
+            <small>Domyślny kanał Slack (np. #general, #notifications)</small>
+          </div>
+        </div>
+        
+        <div class="section">
+          <h2>🏢 Microsoft Teams</h2>
+          <div class="form-group">
+            <label>Webhook URL (TEAMS_WEBHOOK_URL):</label>
+            <input type="url" id="TEAMS_WEBHOOK_URL" placeholder="https://outlook.office.com/webhook/...">
+            <small>URL webhooka Teams z ustawień kanału</small>
+          </div>
+        </div>
+        
+        <div class="section">
+          <h2>💬 Discord (opcjonalnie)</h2>
+          <div class="form-group">
+            <label>Webhook URL (DISCORD_WEBHOOK_URL):</label>
+            <input type="url" id="DISCORD_WEBHOOK_URL" placeholder="https://discord.com/api/webhooks/...">
+            <small>URL webhooka Discord (opcjonalne)</small>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Tab: Advanced -->
+      <div id="tab-advanced" class="tab-content">
+        <div class="section">
+          <h2>API Configuration</h2>
+          <div class="form-group">
+            <label>API Base URL (API_BASE_URL):</label>
+            <input type="url" id="API_BASE_URL" value="http://localhost:3000">
+            <small>Bazowy URL API</small>
+          </div>
+          <div class="form-group">
+            <label>API Timeout (API_TIMEOUT):</label>
+            <input type="number" id="API_TIMEOUT" value="30000">
+            <small>Timeout w milisekundach</small>
+          </div>
+        </div>
+        
+        <div class="section">
+          <h2>Security</h2>
+          <div class="form-group">
+            <label>CORS Origin (CORS_ORIGIN):</label>
+            <input type="text" id="CORS_ORIGIN" value="*">
+            <small>Dozwolone originy CORS (* = wszystkie)</small>
+          </div>
+          <div class="form-group">
+            <label>Helmet Enabled (HELMET_ENABLED):</label>
+            <select id="HELMET_ENABLED">
+              <option value="true">Włączone</option>
+              <option value="false">Wyłączone</option>
+            </select>
+            <small>Bezpieczeństwo nagłówków HTTP</small>
+          </div>
+        </div>
+        
+        <div class="section">
+          <h2>Logging & Features</h2>
+          <div class="form-group">
+            <label>Log Level (LOG_LEVEL):</label>
+            <select id="LOG_LEVEL">
+              <option value="error">Error</option>
+              <option value="warn">Warn</option>
+              <option value="info">Info</option>
+              <option value="debug">Debug</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Enable Notifications (ENABLE_NOTIFICATIONS):</label>
+            <select id="ENABLE_NOTIFICATIONS">
+              <option value="true">Tak</option>
+              <option value="false">Nie</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Enable Webhooks (ENABLE_WEBHOOKS):</label>
+            <select id="ENABLE_WEBHOOKS">
+              <option value="true">Tak</option>
+              <option value="false">Nie</option>
+            </select>
+          </div>
+        </div>
+        
+        <div class="section">
+          <h2>Rate Limiting</h2>
+          <div class="form-group">
+            <label>Window (RATE_LIMIT_WINDOW):</label>
+            <input type="number" id="RATE_LIMIT_WINDOW" value="900000">
+            <small>Okno czasowe w milisekundach (15 min = 900000)</small>
+          </div>
+          <div class="form-group">
+            <label>Max Requests (RATE_LIMIT_MAX):</label>
+            <input type="number" id="RATE_LIMIT_MAX" value="100">
+            <small>Maksymalna liczba żądań w oknie</small>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Tab: Preview -->
+      <div id="tab-preview" class="tab-content">
+        <div class="section">
+          <h2>Podgląd pliku .env</h2>
+          <div class="alert alert-info">
+            Poniżej znajduje się podgląd pliku .env, który zostanie wygenerowany na podstawie ustawień.
+          </div>
+          <div class="code-preview" id="env-preview"></div>
+        </div>
+      </div>
+      
+      <div class="actions">
+        <button class="btn btn-success" onclick="saveConfig()">💾 Zapisz Konfigurację</button>
+        <button class="btn" onclick="loadConfig()">🔄 Załaduj Bieżącą</button>
+        <button class="btn btn-secondary" onclick="exportToFile()">📥 Eksportuj do .env</button>
+        <button class="btn btn-danger" onclick="resetConfig()">🔄 Reset do Domyślnych</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Configuration fields mapping
+    const configFields = [
+      'NODE_ENV', 'PORT', 'HOST', 'DB_PATH',
+      'SMTP_HOST', 'SMTP_PORT', 'SMTP_SECURE', 'SMTP_USER', 'SMTP_PASS', 'SMTP_FROM', 'EMAIL_TO',
+      'SLACK_WEBHOOK_URL', 'SLACK_CHANNEL',
+      'TEAMS_WEBHOOK_URL',
+      'DISCORD_WEBHOOK_URL',
+      'API_BASE_URL', 'API_TIMEOUT',
+      'CORS_ORIGIN', 'HELMET_ENABLED',
+      'LOG_LEVEL', 'LOG_FORMAT',
+      'ENABLE_NOTIFICATIONS', 'ENABLE_WEBHOOKS', 'ENABLE_ANALYTICS', 'ENABLE_CACHE',
+      'RATE_LIMIT_WINDOW', 'RATE_LIMIT_MAX'
+    ];
+    
+    // Tab switching
+    window.switchTab = (name) => {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+      event.target.classList.add('active');
+      document.getElementById(`tab-${name}`).classList.add('active');
+      if (name === 'preview') {
+        updatePreview();
+      }
+    };
+    
+    // Update preview
+    function updatePreview() {
+      const config = {};
+      configFields.forEach(field => {
+        const el = document.getElementById(field);
+        if (el) config[field] = el.value || '';
+      });
+      
+      let envContent = '# Founder.pl DSL - Generated Configuration\n';
+      envContent += `# Generated: ${new Date().toISOString()}\n\n`;
+      
+      Object.entries(config).forEach(([key, value]) => {
+        envContent += `${key}=${value}\n`;
+      });
+      
+      document.getElementById('env-preview').textContent = envContent;
+    }
+    
+    // Show status message
+    function showStatus(message, type = 'info') {
+      const statusDiv = document.getElementById('status-message');
+      statusDiv.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
+      setTimeout(() => statusDiv.innerHTML = '', 5000);
+    }
+    
+    // Save configuration
+    window.saveConfig = async () => {
+      const config = {};
+      configFields.forEach(field => {
+        const el = document.getElementById(field);
+        if (el) config[field] = el.value || '';
+      });
+      
+      try {
+        const response = await fetch('/api/config/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(config)
+        });
+        
+        if (response.ok) {
+          showStatus('✅ Konfiguracja zapisana pomyślnie!', 'success');
+        } else {
+          throw new Error('Failed to save configuration');
+        }
+      } catch (error) {
+        showStatus('❌ Błąd zapisywania: ' + error.message, 'error');
+      }
+    };
+    
+    // Load current configuration
+    window.loadConfig = async () => {
+      try {
+        const response = await fetch('/api/config/load');
+        if (response.ok) {
+          const config = await response.json();
+          Object.entries(config).forEach(([key, value]) => {
+            const el = document.getElementById(key);
+            if (el) el.value = value || '';
+          });
+          showStatus('✅ Konfiguracja załadowana!', 'success');
+        }
+      } catch (error) {
+        showStatus('ℹ️ Używam domyślnych wartości', 'info');
+      }
+    };
+    
+    // Export to .env file
+    window.exportToFile = () => {
+      updatePreview();
+      const content = document.getElementById('env-preview').textContent;
+      const blob = new Blob([content], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = '.env';
+      a.click();
+      URL.revokeObjectURL(url);
+      showStatus('📥 Plik .env eksportowany!', 'success');
+    };
+    
+    // Reset to defaults
+    window.resetConfig = () => {
+      if (!confirm('Czy na pewno chcesz zresetować konfigurację do wartości domyślnych?')) return;
+      
+      document.getElementById('NODE_ENV').value = 'development';
+      document.getElementById('PORT').value = '3000';
+      document.getElementById('HOST').value = '0.0.0.0';
+      document.getElementById('DB_PATH').value = './data/dsl.sqlite';
+      document.getElementById('SMTP_PORT').value = '587';
+      document.getElementById('SLACK_CHANNEL').value = '#general';
+      document.getElementById('API_BASE_URL').value = 'http://localhost:3000';
+      document.getElementById('API_TIMEOUT').value = '30000';
+      document.getElementById('CORS_ORIGIN').value = '*';
+      document.getElementById('RATE_LIMIT_WINDOW').value = '900000';
+      document.getElementById('RATE_LIMIT_MAX').value = '100';
+      
+      showStatus('🔄 Konfiguracja zresetowana', 'info');
+    };
+    
+    // Initialize on load
+    document.addEventListener('DOMContentLoaded', () => {
+      loadConfig();
+      updatePreview();
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <title>🔗 Środowisko Demo Integracji – DSL Founder.pl</title>
+  <link rel="icon" href="data:,">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      overflow: hidden;
+    }
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 30px;
+      text-align: center;
+    }
+    .header h1 { font-size: 32px; margin-bottom: 10px; }
+    .header p { font-size: 16px; opacity: 0.9; }
+    
+    .content {
+      display: grid;
+      grid-template-columns: 350px 1fr;
+      gap: 0;
+      min-height: 80vh;
+    }
+    
+    .sidebar {
+      background: #f8f9fa;
+      border-right: 2px solid #e0e0e0;
+      padding: 20px;
+      overflow-y: auto;
+      max-height: 80vh;
+    }
+    
+    .main {
+      padding: 30px;
+      overflow-y: auto;
+      max-height: 80vh;
+    }
+    
+    .section {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+      border: 1px solid #e0e0e0;
+    }
+    
+    .section h2 {
+      font-size: 18px;
+      margin-bottom: 15px;
+      color: #333;
+    }
+    
+    .form-group {
+      margin-bottom: 12px;
+    }
+    
+    .form-group label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: #555;
+      margin-bottom: 5px;
+    }
+    
+    .form-group input, .form-group select {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 13px;
+    }
+    
+    .btn {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      margin: 5px 5px 5px 0;
+    }
+    
+    .btn:hover { opacity: 0.9; }
+    .btn-small { padding: 6px 12px; font-size: 12px; }
+    .btn-success { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); }
+    .btn-secondary { background: #6c757d; }
+    
+    .status {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+      margin-top: 5px;
+    }
+    
+    .status.configured { background: #d4edda; color: #155724; }
+    .status.not-configured { background: #f8d7da; color: #721c24; }
+    
+    .log {
+      background: #1e1e1e;
+      color: #d4d4d4;
+      padding: 15px;
+      border-radius: 8px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      max-height: 400px;
+      overflow-y: auto;
+      margin-top: 15px;
+    }
+    
+    .log-entry {
+      padding: 4px 0;
+      border-bottom: 1px solid #333;
+    }
+    
+    .log-entry.success { color: #4ec9b0; }
+    .log-entry.error { color: #f48771; }
+    .log-entry.info { color: #9cdcfe; }
+    
+    .workflow-item {
+      background: #f8f9fa;
+      border-left: 4px solid #667eea;
+      padding: 10px;
+      margin-bottom: 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    
+    .workflow-item:hover { background: #e9ecef; }
+    .workflow-item h4 { font-size: 14px; margin-bottom: 5px; }
+    .workflow-item p { font-size: 12px; color: #666; margin: 3px 0; }
+    
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 15px;
+      margin: 20px 0;
+    }
+    
+    .stat-card {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px;
+      border-radius: 8px;
+      text-align: center;
+    }
+    
+    .stat-card h3 { font-size: 28px; margin-bottom: 5px; }
+    .stat-card p { font-size: 13px; }
+    
+    .alert {
+      padding: 12px;
+      border-radius: 6px;
+      margin: 15px 0;
+      font-size: 13px;
+    }
+    
+    .alert-info { background: #d1ecf1; color: #0c5460; }
+    .alert-success { background: #d4edda; color: #155724; }
+    .alert-error { background: #f8d7da; color: #721c24; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🔗 Środowisko Demo Integracji</h1>
+      <p>Testowanie powiadomień Email, Slack i Microsoft Teams dla procesów z bazy danych</p>
+    </div>
+    
+    <div class="content">
+      <div class="sidebar">
+        <div class="section">
+          <h2>📧 Email (SMTP)</h2>
+          <div class="form-group">
+            <label>Host:</label>
+            <input type="text" id="email-host" placeholder="smtp.gmail.com" value="smtp.gmail.com">
+          </div>
+          <div class="form-group">
+            <label>Port:</label>
+            <input type="number" id="email-port" placeholder="587" value="587">
+          </div>
+          <div class="form-group">
+            <label>User:</label>
+            <input type="email" id="email-user" placeholder="user@example.com">
+          </div>
+          <div class="form-group">
+            <label>Pass:</label>
+            <input type="password" id="email-pass" placeholder="hasło">
+          </div>
+          <div class="form-group">
+            <label>To:</label>
+            <input type="email" id="email-to" placeholder="recipient@example.com">
+          </div>
+          <button class="btn btn-small" onclick="testEmail()">🧪 Test</button>
+          <button class="btn btn-small btn-secondary" onclick="saveEmailConfig()">💾 Zapisz</button>
+          <div id="email-status"></div>
+        </div>
+        
+        <div class="section">
+          <h2>💬 Slack</h2>
+          <div class="form-group">
+            <label>Webhook URL:</label>
+            <input type="url" id="slack-webhook" placeholder="https://hooks.slack.com/...">
+          </div>
+          <div class="form-group">
+            <label>Channel:</label>
+            <input type="text" id="slack-channel" placeholder="#general" value="#general">
+          </div>
+          <button class="btn btn-small btn-success" onclick="testSlack()">🧪 Test</button>
+          <button class="btn btn-small btn-secondary" onclick="saveSlackConfig()">💾 Zapisz</button>
+          <div id="slack-status"></div>
+        </div>
+        
+        <div class="section">
+          <h2>🏢 Microsoft Teams</h2>
+          <div class="form-group">
+            <label>Webhook URL:</label>
+            <input type="url" id="teams-webhook" placeholder="https://outlook.office.com/...">
+          </div>
+          <button class="btn btn-small btn-success" onclick="testTeams()">🧪 Test</button>
+          <button class="btn btn-small btn-secondary" onclick="saveTeamsConfig()">💾 Zapisz</button>
+          <div id="teams-status"></div>
+        </div>
+      </div>
+      
+      <div class="main">
+        <div class="section">
+          <h2>📋 Procesy</h2>
+          <button class="btn btn-small" onclick="loadFromDB()">🗄️ Z Bazy</button>
+          <button class="btn btn-small" onclick="loadFromDomains()">📁 Z Domains</button>
+          <button class="btn btn-small btn-secondary" onclick="clearWorkflows()">🧹 Wyczyść</button>
+          <div id="workflows-list" style="margin-top: 15px;"></div>
+        </div>
+        
+        <div class="section">
+          <h2>▶️ Symulacja</h2>
+          <div class="alert alert-info">
+            Wybierz proces i kanały powiadomień, następnie uruchom symulację
+          </div>
+          
+          <div class="form-group">
+            <label>Proces:</label>
+            <select id="sim-workflow">
+              <option value="">-- Załaduj procesy --</option>
+            </select>
+          </div>
+          
+          <div class="form-group">
+            <label>Kanały:</label>
+            <div>
+              <label style="display: inline; margin-right: 15px;">
+                <input type="checkbox" id="sim-email" style="width:auto;"> Email
+              </label>
+              <label style="display: inline; margin-right: 15px;">
+                <input type="checkbox" id="sim-slack" style="width:auto;"> Slack
+              </label>
+              <label style="display: inline;">
+                <input type="checkbox" id="sim-teams" style="width:auto;"> Teams
+              </label>
+            </div>
+          </div>
+          
+          <button class="btn btn-success" onclick="runSimulation()">🚀 Uruchom</button>
+          <div id="sim-result"></div>
+          
+          <div class="stats">
+            <div class="stat-card">
+              <h3 id="stat-total">0</h3>
+              <p>Uruchomione</p>
+            </div>
+            <div class="stat-card" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);">
+              <h3 id="stat-success">0</h3>
+              <p>Sukces</p>
+            </div>
+            <div class="stat-card" style="background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%);">
+              <h3 id="stat-errors">0</h3>
+              <p>Błędy</p>
+            </div>
+          </div>
+        </div>
+        
+        <div class="section">
+          <h2>📜 Logi</h2>
+          <button class="btn btn-small btn-secondary" onclick="clearLogs()">🧹 Wyczyść</button>
+          <div class="log" id="log-container">
+            <div class="log-entry info">System gotowy...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="integrations-demo.js"></script>
+</body>
+</html>

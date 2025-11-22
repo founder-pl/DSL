@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <title>Edit – Drag&Drop Editor Diagramów (z bazy)</title>
+  <link rel="icon" href="data:,">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; display: flex; height: 100vh; }
+    .sidebar { width: 300px; background: #f5f5f5; padding: 10px; overflow-y: auto; border-right: 1px solid #ccc; }
+    .main { flex: 1; display: flex; flex-direction: column; }
+    .toolbar { padding: 10px; background: #eee; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .canvas { flex: 1; position: relative; overflow: hidden; background: #fff; }
+    .node { position: absolute; padding: 10px; background: #e3f2fd; border: 2px solid #2196f3; border-radius: 4px; cursor: move; user-select: none; min-width: 120px; }
+    .node.selected { border-color: #ff6600; box-shadow: 0 0 8px rgba(255,102,0,0.5); }
+    .action-node { background: #fff3e0; border-color: #ff9800; }
+    .btn { padding: 6px 10px; }
+    .small { font-size: 12px; color: #666; }
+    #status { margin-left: 10px; color: #555; }
+    .node-label { font-weight: bold; margin-bottom: 4px; }
+    .node-module { font-size: 11px; color: #666; }
+  </style>
+</head>
+<body>
+  <div class="sidebar">
+    <h3>Kroki (z bazy)</h3>
+    <div id="steps-list"></div>
+    <hr>
+    <h3>Zaznaczony element</h3>
+    <div id="props">
+      <div><label>ID:</label> <input type="text" id="prop-id" style="width:90%;"/></div>
+      <div><label>Name:</label> <input type="text" id="prop-name" style="width:90%;"/></div>
+      <div><label>Module:</label> <input type="text" id="prop-module" style="width:90%;"/></div>
+      <button id="update-node-btn" class="btn">💾 Zapisz zmiany</button>
+      <button id="delete-node-btn" class="btn">🗑️ Usuń element</button>
+    </div>
+  </div>
+  <div class="main">
+    <div class="toolbar">
+      <button id="load-db" class="btn">⬇️ Wczytaj z bazy</button>
+      <button id="save-db" class="btn">⬆️ Zapisz do bazy</button>
+      <button id="add-step" class="btn">➕ Dodaj krok</button>
+      <button id="zoom-in" class="btn">🔍+</button>
+      <button id="zoom-out" class="btn">🔍−</button>
+      <button id="auto-layout" class="btn">🎯 Auto-układ</button>
+      <span id="status"></span>
+    </div>
+    <div class="canvas" id="canvas"></div>
+  </div>
+
+  <script type="module">
+    import { TextSanitizer } from './src/core/sanitizer.js';
+    const sanitizer = new TextSanitizer();
+    const canvas = document.getElementById('canvas');
+    const statusEl = document.getElementById('status');
+    
+    let workflows = [];
+    let nodes = []; // {id, type:'step'|'action', data:{id,name,module}, x, y, element}
+    let selectedNode = null;
+    let dragNode = null;
+    let offsetX = 0, offsetY = 0;
+    let scale = 1;
+
+    function status(msg){ statusEl.textContent = msg; setTimeout(()=>{ if (statusEl.textContent === msg) statusEl.textContent=''; }, 4000); }
+
+    // Wczytaj z bazy
+    document.getElementById('load-db').addEventListener('click', async () => {
+      try{
+        const r = await fetch('/api/workflow/db/workflows');
+        const data = await r.json();
+        workflows = Array.isArray(data?.workflows) ? data.workflows : [];
+        renderNodes();
+        updateStepsList();
+        status(`Wczytano ${workflows.length} kroków`);
+      }catch(e){ status('Błąd wczytywania: '+e.message); }
+    });
+
+    // Zapisz do bazy
+    document.getElementById('save-db').addEventListener('click', async () => {
+      try{
+        // Rebuild workflows from nodes
+        const wfMap = new Map();
+        nodes.forEach(n => {
+          if (n.type === 'step'){
+            if (!wfMap.has(n.data.id)){
+              wfMap.set(n.data.id, { id: n.data.id, name: n.data.name, module: n.data.module, actions: [] });
+            }
+          }
+        });
+        nodes.forEach(n => {
+          if (n.type === 'action'){
+            const stepId = n.parentStepId || 'default_step';
+            if (!wfMap.has(stepId)){
+              wfMap.set(stepId, { id: stepId, name: 'Krok', module: 'Default', actions: [] });
+            }
+            wfMap.get(stepId).actions.push({ id: n.data.id, name: n.data.name, module: n.data.module });
+          }
+        });
+        const wfArray = Array.from(wfMap.values());
+        const r = await fetch('/api/workflow/db/save', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ workflows: wfArray, replace: false }) });
+        const res = await r.json();
+        if (!r.ok) throw new Error(res.error||'save failed');
+        status(`Zapisano ${res.count} kroków do bazy`);
+      }catch(e){ status('Błąd zapisu: '+e.message); }
+    });
+
+    // Dodaj krok
+    document.getElementById('add-step').addEventListener('click', () => {
+      const id = `step_${Date.now()}`;
+      const n = { id, type:'step', data:{ id, name:'Nowy krok', module:'Default' }, x: 50, y: 50 };
+      nodes.push(n);
+      renderNodes();
+      status('Dodano nowy krok');
+    });
+
+    // Zoom
+    document.getElementById('zoom-in').addEventListener('click', () => { scale = Math.min(scale+0.1, 2); applyZoom(); });
+    document.getElementById('zoom-out').addEventListener('click', () => { scale = Math.max(scale-0.1, 0.5); applyZoom(); });
+    function applyZoom(){ canvas.style.transform = `scale(${scale})`; canvas.style.transformOrigin = 'top left'; }
+
+    // Auto-layout (prosty grid)
+    document.getElementById('auto-layout').addEventListener('click', () => {
+      let x = 20, y = 20;
+      nodes.forEach((n,i) => {
+        n.x = x; n.y = y;
+        x += 200;
+        if ((i+1) % 4 === 0){ x = 20; y += 120; }
+      });
+      renderNodes();
+      status('Zastosowano auto-układ');
+    });
+
+    // Render nodes on canvas
+    function renderNodes(){
+      canvas.innerHTML = '';
+      nodes.forEach(n => {
+        const div = document.createElement('div');
+        div.className = 'node' + (n.type === 'action' ? ' action-node' : '');
+        div.style.left = n.x + 'px';
+        div.style.top = n.y + 'px';
+        div.innerHTML = `<div class="node-label">${escapeHtml(n.data.name)}</div><div class="node-module">${escapeHtml(n.data.module)}</div><div class="small">${escapeHtml(n.data.id)}</div>`;
+        div.onmousedown = (e) => startDrag(e, n);
+        div.onclick = (e) => { e.stopPropagation(); selectNode(n); };
+        n.element = div;
+        canvas.appendChild(div);
+      });
+    }
+
+    function selectNode(n){
+      if (selectedNode) selectedNode.element.classList.remove('selected');
+      selectedNode = n;
+      n.element.classList.add('selected');
+      document.getElementById('prop-id').value = n.data.id;
+      document.getElementById('prop-name').value = n.data.name;
+      document.getElementById('prop-module').value = n.data.module;
+    }
+
+    function startDrag(e, n){
+      dragNode = n;
+      const rect = n.element.getBoundingClientRect();
+      offsetX = e.clientX - rect.left;
+      offsetY = e.clientY - rect.top;
+      e.preventDefault();
+    }
+
+    document.addEventListener('mousemove', (e) => {
+      if (!dragNode) return;
+      const canvasRect = canvas.getBoundingClientRect();
+      dragNode.x = (e.clientX - canvasRect.left - offsetX) / scale;
+      dragNode.y = (e.clientY - canvasRect.top - offsetY) / scale;
+      dragNode.element.style.left = dragNode.x + 'px';
+      dragNode.element.style.top = dragNode.y + 'px';
+    });
+
+    document.addEventListener('mouseup', () => { dragNode = null; });
+
+    // Update node props
+    document.getElementById('update-node-btn').addEventListener('click', () => {
+      if (!selectedNode) return;
+      selectedNode.data.id = document.getElementById('prop-id').value.trim() || selectedNode.data.id;
+      selectedNode.data.name = document.getElementById('prop-name').value.trim() || selectedNode.data.name;
+      selectedNode.data.module = document.getElementById('prop-module').value.trim() || selectedNode.data.module;
+      renderNodes();
+      status('Zaktualizowano element');
+    });
+
+    // Delete node
+    document.getElementById('delete-node-btn').addEventListener('click', () => {
+      if (!selectedNode) return;
+      nodes = nodes.filter(n => n !== selectedNode);
+      selectedNode = null;
+      renderNodes();
+      status('Usunięto element');
+    });
+
+    function updateStepsList(){
+      const list = document.getElementById('steps-list');
+      list.innerHTML = '';
+      workflows.forEach(wf => {
+        const div = document.createElement('div');
+        div.style.marginBottom = '6px';
+        div.innerHTML = `<strong>${escapeHtml(wf.name)}</strong> (${wf.actions?.length||0} akcji)`;
+        list.appendChild(div);
+      });
+    }
+
+    function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c])); }
+
+    // Bootstrap: load from DB
+    document.getElementById('load-db').click();
+  </script>
+</body>
+</html>

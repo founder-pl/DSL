@@ -1,21 +1,64 @@
 version: '3.8'
+
 services:
+  # Main DSL Application
   dsl:
-    build: .
+    build: 
+      context: .
+      dockerfile: Dockerfile
     container_name: dsl-server
+    restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "${PORT:-3000}:${PORT:-3000}"
+    env_file:
+      - .env
     environment:
-      - NODE_ENV=production
+      - NODE_ENV=${NODE_ENV:-development}
+      - PORT=${PORT:-3000}
+      - HOST=${HOST:-0.0.0.0}
+      - DB_PATH=${DB_PATH:-./data/dsl.sqlite}
+      - API_BASE_URL=${API_BASE_URL:-http://localhost:3000}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
+      test: ["CMD", "wget", "-qO-", "http://localhost:${PORT:-3000}/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
     volumes:
       - ./generated:/app/generated
+      - ./data:/app/data
+      - ./domains:/app/domains:ro
       - ./procesy.txt:/app/procesy.txt:ro
+      - ./uploads:/app/uploads
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - dsl-network
+    labels:
+      - "com.founder.dsl.service=main"
+      - "com.founder.dsl.version=1.0"
 
+  # Redis for caching (optional)
+  redis:
+    image: redis:7-alpine
+    container_name: dsl-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - dsl-network
+
+  # E2E Tests
   e2e:
     image: node:20-alpine
     container_name: dsl-e2e
@@ -25,4 +68,35 @@ services:
         condition: service_healthy
     volumes:
       - ./:/e2e
+    env_file:
+      - .env
     command: ["sh", "-c", "npm install && node --test src/tests/e2e-processes.test.js"]
+    networks:
+      - dsl-network
+
+  # Nginx Reverse Proxy (optional)
+  nginx:
+    image: nginx:alpine
+    container_name: dsl-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - dsl
+    networks:
+      - dsl-network
+    profiles:
+      - production
+
+networks:
+  dsl-network:
+    driver: bridge
+    name: dsl-network
+
+volumes:
+  redis-data:
+    name: dsl-redis-data

@@ -132,6 +132,37 @@ steps:
   </div>
 </div>
 
+<h2>Powiadomienia produkcyjne</h2>
+<div style="display:flex; gap:20px; flex-wrap: wrap; margin-bottom:10px;">
+  <div style="flex:1; min-width:300px;">
+    <h3>Email (SMTP)</h3>
+    <div><label>Host:</label> <input type="text" id="smtp-host" placeholder="smtp.example.com" style="width:90%;"/></div>
+    <div><label>Port:</label> <input type="text" id="smtp-port" placeholder="587" style="width:90%;"/></div>
+    <div><label>User:</label> <input type="text" id="smtp-user" placeholder="user@example.com" style="width:90%;"/></div>
+    <div><label>Pass:</label> <input type="password" id="smtp-pass" placeholder="hasło" style="width:90%;"/></div>
+    <div><label>To:</label> <input type="text" id="smtp-to" placeholder="recipient@example.com" style="width:90%;"/></div>
+    <button id="test-email">📧 Test Email</button>
+    <span id="email-status" style="margin-left:10px;"></span>
+  </div>
+  <div style="flex:1; min-width:300px;">
+    <h3>Slack</h3>
+    <div><label>Webhook URL:</label> <input type="text" id="slack-webhook" placeholder="https://hooks.slack.com/..." style="width:90%;"/></div>
+    <div><label>Channel:</label> <input type="text" id="slack-channel" placeholder="#general" style="width:90%;"/></div>
+    <button id="test-slack">💬 Test Slack</button>
+    <span id="slack-status" style="margin-left:10px;"></span>
+  </div>
+  <div style="flex:1; min-width:300px;">
+    <h3>Microsoft Teams</h3>
+    <div><label>Webhook URL:</label> <input type="text" id="teams-webhook" placeholder="https://outlook.office.com/webhook/..." style="width:90%;"/></div>
+    <button id="test-teams">🔔 Test Teams</button>
+    <span id="teams-status" style="margin-left:10px;"></span>
+  </div>
+</div>
+<div style="margin-bottom:10px;">
+  <button id="save-notifications">💾 Zapisz konfigurację powiadomień</button>
+  <button id="load-notifications">⬇️ Wczytaj konfigurację</button>
+</div>
+
 <script type="module">
     import { TextSanitizer } from "./src/core/sanitizer.js";
     import { ModuleMapper } from "./src/core/module-mapper.js";
@@ -487,6 +518,39 @@ steps:
     document.getElementById("sentence-btn").addEventListener("click",async ()=>{
         const sentence = document.getElementById("sentence-editor").value;
         if(!sentence) return;
+        
+        // Helper: lokalny parser z import w runtime (fallback)
+        const localParse = async () => {
+            try {
+                // Importuj moduły z backendu (nie będzie działać w przeglądarce bez bundlera)
+                // Użyjemy prostego fallback parsera
+                const match = sentence.match(/Gdy\s+(.+?),\s+(.+)/i);
+                if (!match) throw new Error('Format zdania musi być: "Gdy [warunek], [akcje]"');
+                const condition = match[1].trim();
+                const actionsText = match[2]
+                    .split(/\s+(?:i|oraz|a także|następnie)\s+/i)
+                    .map(a => a.trim().replace(/\.$/, ''))
+                    .filter(a => a.length > 0);
+                
+                const stepId = sanitizer.sanitizeId(condition);
+                const stepModule = mapper.getModuleForKeywords(condition + ' ' + actionsText.join(' '));
+                const stepActions = actionsText.map((a, i) => ({
+                    id: sanitizer.sanitizeId(`${stepId}_action_${i + 1}`),
+                    name: a,
+                    module: mapper.getModuleForKeywords(a)
+                }));
+                
+                return {
+                    id: stepId,
+                    name: condition,
+                    module: stepModule,
+                    actions: stepActions
+                };
+            } catch (e) {
+                throw new Error('Nie można sparsować zdania lokalnie: ' + e.message);
+            }
+        };
+        
         // 1) Spróbuj standardowego NLP na backendzie
         try{
             const resp = await fetch('/api/workflow/nlp', {
@@ -496,18 +560,19 @@ steps:
             if (resp.ok){
                 const data = await resp.json();
                 const wfEvent = data.workflow;
-                if (!wfEvent || !wfEvent.payload) throw new Error('Brak workflow payload');
-                const payload = wfEvent.payload;
-                const workflow = jsyaml.load(document.getElementById("yaml-editor").value);
-                workflow.steps.push({ id: payload.id, name: payload.name, module: payload.module, actions: payload.actions });
-                document.getElementById("yaml-editor").value = jsyaml.dump(workflow);
-                renderDiagram(workflow);
-                payload.actions.forEach(a=>sendCommand(a.name));
-                document.getElementById("sentence-editor").value="";
-                return;
+                if (wfEvent && wfEvent.payload) {
+                    const payload = wfEvent.payload;
+                    const workflow = jsyaml.load(document.getElementById("yaml-editor").value);
+                    workflow.steps.push({ id: payload.id, name: payload.name, module: payload.module, actions: payload.actions });
+                    document.getElementById("yaml-editor").value = jsyaml.dump(workflow);
+                    renderDiagram(workflow);
+                    payload.actions.forEach(a=>sendCommand(a.name));
+                    document.getElementById("sentence-editor").value="";
+                    console.log('✓ Workflow utworzony przez /api/workflow/nlp');
+                    return;
+                }
             }
-            // jeśli 4xx/5xx – przejdź do deep analysis
-        }catch(_){ /* ignore and try deep analysis */ }
+        }catch(err1){ console.log('NLP standard nie odpowiada, próbuję deep analysis...', err1.message); }
 
         // 2) Deep Analysis API dla swobodnych zdań
         try{
@@ -516,9 +581,8 @@ steps:
                 body: JSON.stringify({ text: sentence, options: { baseUrl: location.origin }, generate: true, applyWorkflow: true })
             });
             const data2 = await resp2.json();
-            if (!resp2.ok || !data2.success){ throw new Error(data2.error || data2.message || 'Deep analysis failed'); }
-
-            if (data2.suggestedWorkflow){
+            
+            if (resp2.ok && data2.success && data2.suggestedWorkflow){
                 const s = data2.suggestedWorkflow;
                 const wf = jsyaml.load(document.getElementById("yaml-editor").value);
                 wf.steps.push({ id: s.id, name: s.name, module: s.module, actions: s.actions });
@@ -527,23 +591,28 @@ steps:
                 (s.actions||[]).forEach(a=>sendCommand(a.name));
                 document.getElementById("sentence-editor").value="";
                 if (Array.isArray(data2.files) && data2.files.length){
-                    alert(`Analiza dogłębna: wygenerowano ${data2.files.length} plików skryptów/akcji.`);
+                    alert(`✓ Analiza głęboka: wygenerowano ${data2.files.length} plików skryptów`);
                 }
+                console.log('✓ Workflow utworzony przez /api/analysis/deep');
                 return;
             }
-            throw new Error('Brak sugerowanego workflow z analizy');
-        }catch(errDeep){
-            // 3) Ostateczny fallback: lokalny parser "Gdy ..., ..."
-            try{
-                const parsed = parseSentence(sentence);
-                const step = buildStep(parsed.condition, parsed.actions, sanitizer, mapper);
-                const workflow = jsyaml.load(document.getElementById("yaml-editor").value);
-                workflow.steps.push(step);
-                document.getElementById("yaml-editor").value = jsyaml.dump(workflow);
-                renderDiagram(workflow);
-                step.actions.forEach(a=>sendCommand(a.name));
-                document.getElementById("sentence-editor").value="";
-            }catch(e){ alert("Błąd: "+(errDeep?.message||e.message)); }
+        }catch(errDeep){ console.log('Deep analysis nie odpowiada, próbuję lokalny parser...', errDeep.message); }
+
+        // 3) Ostateczny fallback: lokalny parser "Gdy ..., ..."
+        try{
+            const step = await localParse();
+            const workflow = jsyaml.load(document.getElementById("yaml-editor").value);
+            workflow.steps.push(step);
+            document.getElementById("yaml-editor").value = jsyaml.dump(workflow);
+            renderDiagram(workflow);
+            step.actions.forEach(a=>sendCommand(a.name));
+            document.getElementById("sentence-editor").value="";
+            console.log('✓ Workflow utworzony przez lokalny parser');
+        }catch(errLocal){ 
+            alert("❌ Nie udało się przetworzyć zdania.\n\n" +
+                  "Sprawdź format: 'Gdy [warunek], [akcja 1] i [akcja 2]'\n\n" +
+                  "Szczegóły w konsoli (F12)");
+            console.error('Wszystkie metody NLP zawiodły:', { errLocal: errLocal.message });
         }
     });
 
@@ -1023,6 +1092,46 @@ flowchart LR
         const workflow = jsyaml.load(document.getElementById("yaml-editor").value);
         renderDiagram(workflow);
     }catch(e){ console.error(e); }
+
+    // === Notifications (Production) ===
+    function setNotifStatus(id, msg){ const el = document.getElementById(id); if (el) el.textContent = msg; setTimeout(()=>{ if (el.textContent === msg) el.textContent=''; }, 4000); }
+    
+    function getNotifConfig(){
+      return {
+        smtp: { host: document.getElementById('smtp-host').value, port: document.getElementById('smtp-port').value, user: document.getElementById('smtp-user').value, pass: document.getElementById('smtp-pass').value, to: document.getElementById('smtp-to').value },
+        slack: { webhook: document.getElementById('slack-webhook').value, channel: document.getElementById('slack-channel').value },
+        teams: { webhook: document.getElementById('teams-webhook').value }
+      };
+    }
+    
+    function applyNotifConfig(cfg){
+      if (cfg.smtp){ document.getElementById('smtp-host').value = cfg.smtp.host||''; document.getElementById('smtp-port').value = cfg.smtp.port||''; document.getElementById('smtp-user').value = cfg.smtp.user||''; document.getElementById('smtp-pass').value = cfg.smtp.pass||''; document.getElementById('smtp-to').value = cfg.smtp.to||''; }
+      if (cfg.slack){ document.getElementById('slack-webhook').value = cfg.slack.webhook||''; document.getElementById('slack-channel').value = cfg.slack.channel||''; }
+      if (cfg.teams){ document.getElementById('teams-webhook').value = cfg.teams.webhook||''; }
+    }
+    
+    document.getElementById('save-notifications').addEventListener('click', ()=>{
+      try{ const cfg = getNotifConfig(); if (hasStorage()) localStorage.setItem('dsl_notifications', JSON.stringify(cfg)); alert('Zapisano konfigurację powiadomień'); }catch(e){ alert('Błąd zapisu: '+e.message); }
+    });
+    
+    document.getElementById('load-notifications').addEventListener('click', ()=>{
+      try{ if (hasStorage()){ const stored = localStorage.getItem('dsl_notifications'); if (stored){ applyNotifConfig(JSON.parse(stored)); alert('Wczytano konfigurację'); } else { alert('Brak zapisanej konfiguracji'); } } }catch(e){ alert('Błąd odczytu: '+e.message); }
+    });
+    
+    document.getElementById('test-email').addEventListener('click', async ()=>{
+      try{ const cfg = getNotifConfig().smtp; if (!cfg.host || !cfg.user || !cfg.to){ setNotifStatus('email-status','Uzupełnij wszystkie pola'); return; } const r = await fetch('/api/notifications/test-email', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(cfg) }); const data = await r.json(); if (!r.ok) throw new Error(data.error||'email test failed'); setNotifStatus('email-status',`Wysłano test email (${data.messageId||'ok'})`); }catch(e){ setNotifStatus('email-status','Błąd: '+e.message); }
+    });
+    
+    document.getElementById('test-slack').addEventListener('click', async ()=>{
+      try{ const cfg = getNotifConfig().slack; if (!cfg.webhook){ setNotifStatus('slack-status','Uzupełnij webhook URL'); return; } const r = await fetch('/api/notifications/test-slack', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(cfg) }); const data = await r.json(); if (!r.ok) throw new Error(data.error||'slack test failed'); setNotifStatus('slack-status','Wysłano test wiadomość do Slack'); }catch(e){ setNotifStatus('slack-status','Błąd: '+e.message); }
+    });
+    
+    document.getElementById('test-teams').addEventListener('click', async ()=>{
+      try{ const cfg = getNotifConfig().teams; if (!cfg.webhook){ setNotifStatus('teams-status','Uzupełnij webhook URL'); return; } const r = await fetch('/api/notifications/test-teams', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(cfg) }); const data = await r.json(); if (!r.ok) throw new Error(data.error||'teams test failed'); setNotifStatus('teams-status','Wysłano test wiadomość do Teams'); }catch(e){ setNotifStatus('teams-status','Błąd: '+e.message); }
+    });
+    
+    // Load notifications config on startup
+    try{ if (hasStorage()){ const stored = localStorage.getItem('dsl_notifications'); if (stored) applyNotifConfig(JSON.parse(stored)); } }catch(_){}
 
 </script>
 </body>

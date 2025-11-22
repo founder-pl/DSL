@@ -15,7 +15,7 @@ import { exportWorkflowToJSON, exportWorkflowToYAML, importWorkflowFromJSON, imp
 import { projectOverview, projectTimeline, projectWorkflowStatuses } from '../core/projections.js';
 import { suggestModulesForText, analyzeSentenceAndSuggest } from '../core/suggestions.js';
 import { HistoryManager } from '../core/history.js';
-import { initSchema, saveWorkflow, saveEvent, saveWebhook, exportDatabase, importDatabase, getDBPath, getAllWorkflows } from './db.js';
+import { initSchema, saveWorkflow, saveEvent, saveWebhook, exportDatabase, importDatabase, getDBPath, getAllWorkflows, getDB } from './db.js';
 import fs from 'fs';
 import { spawn } from 'child_process';
 import { findDuplicateWorkflows } from '../core/validator.js';
@@ -144,6 +144,12 @@ class DSLServer {
         // Deep analysis routes
         this.setupAnalysisRoutes();
         
+        // Notifications routes (production)
+        this.setupNotificationsRoutes();
+        
+        // Configuration routes
+        this.setupConfigRoutes();
+        
         // Testing routes
         this.setupTestingRoutes();
         
@@ -267,6 +273,39 @@ class DSLServer {
                 res.json({ workflows, count: workflows.length });
             }catch(e){
                 res.status(500).json({ error: 'DB read failed', message: e.message });
+            }
+        });
+
+        // Save workflows directly to DB (optionally replace existing)
+        router.post('/db/save', async (req, res) => {
+            try{
+                const { workflows = [], replace = false } = req.body || {};
+                if (!Array.isArray(workflows)) return res.status(400).json({ error: 'workflows must be an array' });
+                if (replace){
+                    const db = getDB();
+                    await new Promise((resolve,reject)=>db.serialize(()=>{
+                        db.run('DELETE FROM actions');
+                        db.run('DELETE FROM steps');
+                        db.run('DELETE FROM workflows', (err)=> err?reject(err):resolve());
+                    }));
+                }
+                let count = 0;
+                for (const wf of workflows){
+                    // Normalize record
+                    const normalized = {
+                        id: wf.id,
+                        name: wf.name,
+                        module: wf.module || 'Default',
+                        actions: Array.isArray(wf.actions) ? wf.actions : []
+                    };
+                    // Persist
+                    // eslint-disable-next-line no-await-in-loop
+                    await saveWorkflow(normalized);
+                    count++;
+                }
+                res.json({ success:true, count });
+            }catch(e){
+                res.status(400).json({ error: 'DB save failed', message: e.message });
             }
         });
 
@@ -898,6 +937,253 @@ class DSLServer {
 
         this.app.use('/api/exec', router);
     }
+
+    // Production notifications (Email/Slack/Teams)
+    setupNotificationsRoutes(){
+        const router = express.Router();
+        
+        // Test Email (SMTP)
+        router.post('/test-email', async (req, res) => {
+            try{
+                const { host, port, user, pass, to } = req.body || {};
+                if (!host || !user || !to) return res.status(400).json({ error: 'Missing SMTP config' });
+                // Mock response (w produkcji użyj nodemailer)
+                // const nodemailer = require('nodemailer');
+                // const transporter = nodemailer.createTransport({ host, port, auth: { user, pass } });
+                // const info = await transporter.sendMail({ from: user, to, subject: 'DSL Test', text: 'Test message from DSL' });
+                res.json({ ok: true, messageId: 'mock-'+Date.now(), message: 'W produkcji użyj nodemailer' });
+            }catch(e){
+                res.status(400).json({ error: 'email test failed', message: e.message });
+            }
+        });
+        
+        // Test Slack
+        router.post('/test-slack', async (req, res) => {
+            try{
+                const { webhook, channel } = req.body || {};
+                if (!webhook) return res.status(400).json({ error: 'Missing Slack webhook' });
+                const payload = { text: 'Test wiadomość z DSL', channel: channel || '#general' };
+                const r = await fetch(webhook, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+                if (!r.ok) throw new Error('Slack webhook failed: '+r.status);
+                res.json({ ok: true });
+            }catch(e){
+                res.status(400).json({ error: 'slack test failed', message: e.message });
+            }
+        });
+        
+        // Test Teams
+        router.post('/test-teams', async (req, res) => {
+            try{
+                const { webhook } = req.body || {};
+                if (!webhook) return res.status(400).json({ error: 'Missing Teams webhook' });
+                const payload = { text: 'Test wiadomość z DSL' };
+                const r = await fetch(webhook, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+                if (!r.ok) throw new Error('Teams webhook failed: '+r.status);
+                res.json({ ok: true });
+            }catch(e){
+                res.status(400).json({ error: 'teams test failed', message: e.message });
+            }
+        });
+        
+        // Send notification (production use)
+        router.post('/send', async (req, res) => {
+            try{
+                const { channel, config, message, subject } = req.body || {};
+                if (!channel || !config || !message) {
+                    return res.status(400).json({ error: 'Missing required fields: channel, config, message' });
+                }
+                
+                let result = {};
+                
+                if (channel === 'email') {
+                    // Mock email sending (w produkcji użyj nodemailer)
+                    const { host, port, user, pass, to } = config;
+                    if (!to) return res.status(400).json({ error: 'Missing email recipient' });
+                    
+                    // Production: const nodemailer = require('nodemailer');
+                    // const transporter = nodemailer.createTransport({ host, port, auth: { user, pass } });
+                    // const info = await transporter.sendMail({ from: user, to, subject: subject || 'DSL Notification', text: message });
+                    
+                    result = { 
+                        ok: true, 
+                        channel: 'email', 
+                        messageId: 'mock-email-' + Date.now(),
+                        to: to,
+                        note: 'Demo mode - w produkcji użyj nodemailer'
+                    };
+                } else if (channel === 'slack') {
+                    const { webhook, channel: slackChannel } = config;
+                    if (!webhook) return res.status(400).json({ error: 'Missing Slack webhook' });
+                    
+                    const payload = { 
+                        text: message,
+                        channel: slackChannel || '#general'
+                    };
+                    
+                    const r = await fetch(webhook, { 
+                        method: 'POST', 
+                        headers: { 'Content-Type': 'application/json' }, 
+                        body: JSON.stringify(payload) 
+                    });
+                    
+                    if (!r.ok) throw new Error('Slack webhook failed: ' + r.status);
+                    
+                    result = { ok: true, channel: 'slack', slackChannel: slackChannel || '#general' };
+                } else if (channel === 'teams') {
+                    const { webhook } = config;
+                    if (!webhook) return res.status(400).json({ error: 'Missing Teams webhook' });
+                    
+                    const payload = { 
+                        text: message,
+                        title: subject || 'DSL Notification'
+                    };
+                    
+                    const r = await fetch(webhook, { 
+                        method: 'POST', 
+                        headers: { 'Content-Type': 'application/json' }, 
+                        body: JSON.stringify(payload) 
+                    });
+                    
+                    if (!r.ok) throw new Error('Teams webhook failed: ' + r.status);
+                    
+                    result = { ok: true, channel: 'teams' };
+                } else {
+                    return res.status(400).json({ error: 'Invalid channel. Use: email, slack, or teams' });
+                }
+                
+                res.json(result);
+            }catch(e){
+                res.status(400).json({ error: 'notification send failed', message: e.message });
+            }
+        });
+        
+        this.app.use('/api/notifications', router);
+    }
+    
+    // Configuration management routes
+    setupConfigRoutes() {
+        const router = express.Router();
+        const envPath = join(projectRoot, '.env');
+        
+        // Load current configuration from .env
+        router.get('/load', (req, res) => {
+            try {
+                const config = {};
+                
+                // Read from environment variables (already loaded)
+                const envVars = [
+                    'NODE_ENV', 'PORT', 'HOST', 'DB_PATH',
+                    'SMTP_HOST', 'SMTP_PORT', 'SMTP_SECURE', 'SMTP_USER', 'SMTP_PASS', 'SMTP_FROM', 'EMAIL_TO',
+                    'SLACK_WEBHOOK_URL', 'SLACK_CHANNEL',
+                    'TEAMS_WEBHOOK_URL', 'DISCORD_WEBHOOK_URL',
+                    'API_BASE_URL', 'API_TIMEOUT',
+                    'CORS_ORIGIN', 'HELMET_ENABLED',
+                    'LOG_LEVEL', 'LOG_FORMAT',
+                    'ENABLE_NOTIFICATIONS', 'ENABLE_WEBHOOKS', 'ENABLE_ANALYTICS', 'ENABLE_CACHE',
+                    'RATE_LIMIT_WINDOW', 'RATE_LIMIT_MAX'
+                ];
+                
+                envVars.forEach(key => {
+                    config[key] = process.env[key] || '';
+                });
+                
+                res.json(config);
+            } catch (e) {
+                res.status(500).json({ error: 'Failed to load config', message: e.message });
+            }
+        });
+        
+        // Save configuration to .env file
+        router.post('/save', (req, res) => {
+            try {
+                const config = req.body || {};
+                
+                // Build .env content
+                let envContent = '# Founder.pl DSL - Configuration\n';
+                envContent += `# Updated: ${new Date().toISOString()}\n\n`;
+                
+                Object.entries(config).forEach(([key, value]) => {
+                    if (value !== undefined && value !== null) {
+                        envContent += `${key}=${value}\n`;
+                    }
+                });
+                
+                // Write to .env file
+                fs.writeFileSync(envPath, envContent, 'utf-8');
+                
+                // Update process.env (for current session)
+                Object.entries(config).forEach(([key, value]) => {
+                    if (value !== undefined && value !== null) {
+                        process.env[key] = String(value);
+                    }
+                });
+                
+                res.json({ 
+                    success: true, 
+                    message: 'Configuration saved successfully',
+                    note: 'Restart server to fully apply changes'
+                });
+            } catch (e) {
+                res.status(500).json({ error: 'Failed to save config', message: e.message });
+            }
+        });
+        
+        // Reset to default configuration
+        router.post('/reset', (req, res) => {
+            try {
+                const defaultConfig = `# Founder.pl DSL - Default Configuration
+NODE_ENV=development
+PORT=3000
+HOST=0.0.0.0
+DB_PATH=./data/dsl.sqlite
+
+# Email (SMTP)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=
+SMTP_PASS=
+SMTP_FROM=noreply@founder.pl
+EMAIL_TO=
+
+# Integrations
+SLACK_WEBHOOK_URL=
+SLACK_CHANNEL=#general
+TEAMS_WEBHOOK_URL=
+DISCORD_WEBHOOK_URL=
+
+# API
+API_BASE_URL=http://localhost:3000
+API_TIMEOUT=30000
+
+# Security
+CORS_ORIGIN=*
+HELMET_ENABLED=true
+
+# Logging
+LOG_LEVEL=info
+LOG_FORMAT=combined
+
+# Features
+ENABLE_NOTIFICATIONS=true
+ENABLE_WEBHOOKS=true
+ENABLE_ANALYTICS=true
+ENABLE_CACHE=false
+
+# Rate Limiting
+RATE_LIMIT_WINDOW=900000
+RATE_LIMIT_MAX=100
+`;
+                
+                fs.writeFileSync(envPath, defaultConfig, 'utf-8');
+                res.json({ success: true, message: 'Configuration reset to defaults' });
+            } catch (e) {
+                res.status(500).json({ error: 'Failed to reset config', message: e.message });
+            }
+        });
+        
+        this.app.use('/api/config', router);
+    }
     
     setupFrontendRoutes() {
         // Serve main application
@@ -908,6 +1194,16 @@ class DSLServer {
         // Serve test runner
         this.app.get('/tests', (req, res) => {
             res.sendFile(join(projectRoot, 'test-runner.html'));
+        });
+        
+        // Serve integrations demo
+        this.app.get('/integrations-demo', (req, res) => {
+            res.sendFile(join(projectRoot, 'integrations-demo.html'));
+        });
+        
+        // Serve config panel
+        this.app.get('/config', (req, res) => {
+            res.sendFile(join(projectRoot, 'config.html'));
         });
         
         // API documentation

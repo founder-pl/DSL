@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <title>UI Tester – automatyczna weryfikacja wszystkich przycisków i pól</title>
+  <link rel="icon" href="data:,">
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    h1 { margin-top: 0; }
+    .section { margin-bottom: 20px; border: 1px solid #ddd; padding: 10px; }
+    .test-item { display: flex; gap: 10px; align-items: center; margin-bottom: 6px; }
+    .status { width: 80px; font-weight: bold; }
+    .pass { color: green; }
+    .fail { color: red; }
+    .skip { color: orange; }
+    .btn { padding: 6px 10px; margin-right: 10px; }
+    #summary { font-size: 18px; margin: 20px 0; padding: 10px; background: #f5f5f5; }
+    pre { background: #f9f9f9; padding: 10px; max-height: 300px; overflow: auto; }
+  </style>
+</head>
+<body>
+  <h1>🧪 UI Tester – weryfikacja wszystkich przycisków, akcji i pól</h1>
+  <div>
+    <button id="run-all" class="btn">▶️ Uruchom wszystkie testy</button>
+    <button id="clear-results" class="btn">🧹 Wyczyść wyniki</button>
+  </div>
+  <div id="summary"></div>
+  <div id="results"></div>
+
+  <script type="module">
+    const results = [];
+    const summaryEl = document.getElementById('summary');
+    const resultsEl = document.getElementById('results');
+
+    function addResult(category, test, status, message){
+      results.push({ category, test, status, message });
+      render();
+    }
+
+    function render(){
+      const cats = {};
+      results.forEach(r => { if (!cats[r.category]) cats[r.category] = []; cats[r.category].push(r); });
+      let html = '';
+      for (const [cat, items] of Object.entries(cats)){
+        html += `<div class="section"><h3>${cat}</h3>`;
+        items.forEach(i => {
+          const cls = i.status === 'PASS' ? 'pass' : (i.status === 'FAIL' ? 'fail' : 'skip');
+          html += `<div class="test-item"><span class="status ${cls}">${i.status}</span><span>${i.test}</span><span class="small">${i.message||''}</span></div>`;
+        });
+        html += '</div>';
+      }
+      resultsEl.innerHTML = html;
+
+      const pass = results.filter(r=>r.status==='PASS').length;
+      const fail = results.filter(r=>r.status==='FAIL').length;
+      const skip = results.filter(r=>r.status==='SKIP').length;
+      summaryEl.innerHTML = `<strong>Podsumowanie:</strong> ✅ ${pass} PASS | ❌ ${fail} FAIL | ⚠️ ${skip} SKIP | Total: ${results.length}`;
+    }
+
+    async function testAPI(endpoint, method='GET', body=null){
+      try{
+        const opts = { method, headers: { 'Content-Type': 'application/json' } };
+        if (body) opts.body = JSON.stringify(body);
+        const r = await fetch(endpoint, opts);
+        return { ok: r.ok, status: r.status, data: await r.json().catch(()=>null) };
+      }catch(e){ return { ok: false, error: e.message }; }
+    }
+
+    async function testElement(selector, action='exists'){
+      try{
+        const el = document.querySelector(selector);
+        if (action === 'exists') return !!el;
+        if (action === 'click' && el){ el.click(); return true; }
+        if (action === 'input' && el){ el.value = 'test'; return true; }
+        return false;
+      }catch{ return false; }
+    }
+
+    document.getElementById('run-all').addEventListener('click', async () => {
+      results.length = 0;
+      render();
+
+      // === API Health & Core ===
+      addResult('API', 'GET /api/health', ...(await testAPI('/api/health')).ok ? ['PASS',''] : ['FAIL','endpoint not responding']);
+      addResult('API', 'GET /api', ...(await testAPI('/api')).ok ? ['PASS',''] : ['FAIL','']);
+      
+      // === Workflow API ===
+      const nlpRes = await testAPI('/api/workflow/nlp', 'POST', { sentence: 'Gdy test, wykonaj akcję testową' });
+      addResult('Workflow API', 'POST /api/workflow/nlp', nlpRes.ok ? 'PASS' : 'FAIL', nlpRes.error || '');
+      
+      const workflowsRes = await testAPI('/api/workflow/workflows');
+      addResult('Workflow API', 'GET /api/workflow/workflows', workflowsRes.ok ? 'PASS' : 'FAIL', '');
+      
+      const dbWorkflowsRes = await testAPI('/api/workflow/db/workflows');
+      addResult('Workflow API', 'GET /api/workflow/db/workflows', dbWorkflowsRes.ok ? 'PASS' : 'FAIL', '');
+      
+      const dbSaveRes = await testAPI('/api/workflow/db/save', 'POST', { workflows: [{ id:'test1', name:'Test', module:'Default', actions:[] }], replace:false });
+      addResult('Workflow API', 'POST /api/workflow/db/save', dbSaveRes.ok ? 'PASS' : 'FAIL', dbSaveRes.error || dbSaveRes.data?.error || dbSaveRes.data?.message || `status ${dbSaveRes.status}`);
+      
+      // === Analysis API ===
+      const deepRes = await testAPI('/api/analysis/deep', 'POST', { text: 'Dodaj możliwość generowania akcji w przeglądarce' });
+      addResult('Analysis API', 'POST /api/analysis/deep', deepRes.ok ? 'PASS' : 'FAIL', '');
+      
+      // === Processes API ===
+      const splitRes = await testAPI('/api/processes/split');
+      addResult('Processes API', 'GET /api/processes/split', splitRes.ok ? 'PASS' : 'FAIL', '');
+      
+      const listRes = await testAPI('/api/processes/list');
+      addResult('Processes API', 'GET /api/processes/list', listRes.ok ? 'PASS' : 'FAIL', '');
+      
+      // === DB API ===
+      const dbValidateRes = await testAPI('/api/db/validate');
+      addResult('DB API', 'GET /api/db/validate', dbValidateRes.ok ? 'PASS' : 'FAIL', '');
+      
+      // === Serializer API ===
+      const exportRes = await testAPI('/api/serializer/export?format=json');
+      addResult('Serializer API', 'GET /api/serializer/export', exportRes.ok ? 'PASS' : 'FAIL', '');
+      
+      // === Mock API ===
+      const mockEmailRes = await testAPI('/api/mock/send-email', 'POST', { to: 'test@example.com' });
+      addResult('Mock API', 'POST /api/mock/send-email', mockEmailRes.ok ? 'PASS' : 'FAIL', '');
+      
+      // === UI Elements (index.html – via iframe simulation) ===
+      // Tutaj testujemy, czy główne przyciski są zdefiniowane (zakładamy, że UI jest dostępne)
+      // Dla pełnego testu UI trzeba załadować iframe i sprawdzić elementy wewnątrz
+      addResult('UI Elements (index.html)', 'sentence-btn', 'SKIP', 'wymaga iframe lub puppeteer');
+      addResult('UI Elements (index.html)', 'update-btn', 'SKIP', 'wymaga iframe lub puppeteer');
+      addResult('UI Elements (index.html)', 'process-multi-btn', 'SKIP', 'wymaga iframe lub puppeteer');
+      
+      // === UI Elements (manager.html – local) ===
+      // Możemy sprawdzić obecność elementów w managerze (jeśli załadujemy go w iframe)
+      addResult('UI Elements (manager.html)', 'load-db button', 'SKIP', 'wymaga iframe');
+      addResult('UI Elements (manager.html)', 'save-db button', 'SKIP', 'wymaga iframe');
+      
+      // === E2E scenarios ===
+      addResult('E2E', 'NLP -> workflow -> diagram', 'SKIP', 'wymaga puppeteer lub playwright');
+      addResult('E2E', 'Manager: load -> edit -> save', 'SKIP', 'wymaga puppeteer lub playwright');
+      
+      summaryEl.innerHTML += '<br><em>Testy UI przycisków/pól w iframe wymagają dodatkowego frameworka (np. Puppeteer).</em>';
+    });
+
+    document.getElementById('clear-results').addEventListener('click', () => {
+      results.length = 0;
+      render();
+    });
+  </script>
+</body>
+</html>

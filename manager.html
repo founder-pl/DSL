@@ -31,8 +31,11 @@
     <button id="load-domains" class="btn">📂 Wczytaj wszystkie domeny (generated/domains/*.yaml)</button>
     <button id="apply-yaml" class="btn">📥 Zastosuj YAML (z pola niżej)</button>
     <button id="dedupe" class="btn">🧹 Usuń duplikaty</button>
-    <button id="save-api" class="btn">⬆️ Zapisz do API</button>
+    <button id="save-db" class="btn">⬆️ Zapisz do bazy (SQLite)</button>
+    <label class="small"><input type="checkbox" id="save-replace"/> nadpisz istniejące</label>
+    <button id="save-api" class="btn">⬆️ Zapisz do API (importer)</button>
     <button id="download-yaml" class="btn">💾 Pobierz YAML</button>
+    <label class="small"><input type="checkbox" id="auto-save"/> Autozapis (3s)</label>
     <span id="status" class="status"></span>
   </div>
 
@@ -156,11 +159,27 @@
     };
 
     // YAML regeneracja
+    let autoSaveTimer = null;
     function regenerateYAML(){
       try{
         const dsl = { workflow: state.workflow, steps: state.steps };
         yamlEl.value = jsyaml.dump(dsl);
         status('Zaktualizowano DSL');
+        
+        // Autozapis (debounce 3s)
+        if (document.getElementById('auto-save')?.checked){
+          clearTimeout(autoSaveTimer);
+          autoSaveTimer = setTimeout(async ()=>{
+            try{
+              const workflows = (state.steps||[]).map(s => ({ id: s.id, name: s.name, module: s.module, actions: s.actions||[] }));
+              const replace = !!document.getElementById('save-replace')?.checked;
+              const r = await fetch('/api/workflow/db/save', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ workflows, replace }) });
+              const data = await r.json();
+              if (r.ok) status(`✅ Autozapis: ${data.count} kroków`);
+              else status(`⚠️ Autozapis niepowodzenie: ${data.error||'unknown'}`);
+            }catch(e){ status(`⚠️ Autozapis błąd: ${e.message}`); }
+          }, 3000);
+        }
       }catch(e){ status('Błąd generowania YAML: '+e.message); }
     }
 
@@ -196,7 +215,14 @@
         const allSteps = [];
         for (const path of domainFiles){
           try{
-            const txt = await (await fetch(path.replace(location.origin,''))).text();
+            // Wymuś bezwzględny URL w tej samej domenie, aby nie łamać CSP
+            let urlStr = String(path || '');
+            // Jeśli ścieżka zawiera protokół/host – obetnij do części ścieżki
+            urlStr = urlStr.replace(/^https?:\/\//i, '');
+            urlStr = urlStr.replace(/^[^/]+/, ''); // pozbądź się hosta, zostaw od '/'
+            if (!urlStr.startsWith('/')) urlStr = '/' + urlStr;
+            const absUrl = new URL(urlStr, location.origin).toString();
+            const txt = await (await fetch(absUrl, { cache: 'no-store' })).text();
             const obj = jsyaml.load(txt);
             const s = extractSteps(obj);
             allSteps.push(...s);
@@ -226,6 +252,18 @@
         if (!r.ok) throw new Error(data.error||'import failed');
         status(`Zapisano do API (count=${data.count})`);
       }catch(e){ status('Błąd zapisu: '+e.message); }
+    });
+
+    // Zapis bezpośrednio do bazy (SQLite)
+    document.getElementById('save-db').addEventListener('click', async () => {
+      try{
+        const workflows = (state.steps||[]).map(s => ({ id: s.id, name: s.name, module: s.module, actions: s.actions||[] }));
+        const replace = !!document.getElementById('save-replace').checked;
+        const r = await fetch('/api/workflow/db/save', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ workflows, replace }) });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error||'db save failed');
+        status(`Zapisano do bazy (count=${data.count}, replace=${replace})`);
+      }catch(e){ status('Błąd zapisu do bazy: '+e.message); }
     });
 
     // Pobieranie YAML
