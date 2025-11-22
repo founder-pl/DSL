@@ -1,0 +1,41 @@
+{
+  "name": "founder-pl-dsl",
+  "version": "1.0.0",
+  "description": "Founder.pl DSL - Modular Workflow System with CQRS/Event Sourcing",
+  "main": "src/server/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server/index.js",
+    "dev": "node --watch src/server/index.js",
+    "test": "node --test src/tests/**/*.test.js",
+    "test:frontend": "node src/tests/frontend.test.js",
+    "test:backend": "node src/tests/backend.test.js",
+    "test:integration": "node src/tests/integration.test.js",
+    "test:all": "npm run test:backend && npm run test:frontend && npm run test:integration",
+    "build": "node src/build/build.js",
+    "lint": "node src/tools/lint.js",
+    "validate": "node src/tools/validate.js"
+  },
+  "keywords": [
+    "workflow",
+    "cqrs",
+    "event-sourcing",
+    "nlp",
+    "automation",
+    "dsl"
+  ],
+  "author": "Founder.pl",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

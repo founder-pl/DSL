@@ -17,10 +17,13 @@ help:
 	@echo "  make serve       - Uruchamia prosty serwer HTTP"
 	@echo ""
 	@echo "🧪 Testowanie:"
-	@echo "  make test        - Uruchamia wszystkie testy"
-	@echo "  make test-unit   - Uruchamia testy jednostkowe"
-	@echo "  make test-e2e    - Uruchamia testy end-to-end"
+	@echo "  make test        - Uruchamia wszystkie testy (Node.js lub alternatywne)"
+	@echo "  make test-node   - Uruchamia wszystkie testy Node.js z kopiowaniem"
+	@echo "  make test-backend - Uruchamia testy backend Node.js"
+	@echo "  make test-frontend - Uruchamia testy frontend Node.js"
+	@echo "  make test-integration - Uruchamia testy integracyjne"
 	@echo "  make validate    - Waliduje system względem README"
+	@echo "  make validate-api - Waliduje system przez API"
 	@echo "  make coverage    - Generuje raport pokrycia testami"
 	@echo ""
 	@echo "🔍 Analiza kodu:"
@@ -35,8 +38,14 @@ help:
 	@echo ""
 	@echo "🚀 Deployment:"
 	@echo "  make build       - Buduje projekt do produkcji"
+	@echo "  make build-node  - Buduje projekt Node.js"
 	@echo "  make deploy      - Wdraża na serwer"
 	@echo "  make release     - Tworzy nową wersję"
+	@echo ""
+	@echo "🖥️  Node.js Server:"
+	@echo "  make server      - Uruchamia serwer Node.js (port 3000)"
+	@echo "  make server-dev  - Uruchamia serwer w trybie deweloperskim"
+	@echo "  make full-node   - Pełny cykl: instalacja + serwer + testy"
 	@echo ""
 	@echo "🧹 Utrzymanie:"
 	@echo "  make clean       - Czyści pliki tymczasowe"
@@ -47,8 +56,10 @@ help:
 install:
 	@echo "📦 Instalowanie zależności..."
 	@if command -v npm >/dev/null 2>&1; then \
+		echo "📥 Instalowanie pakietów Node.js..."; \
+		npm install; \
 		npm install -g http-server live-server; \
-		echo "✅ Zainstalowano http-server i live-server"; \
+		echo "✅ Zainstalowano zależności Node.js"; \
 	else \
 		echo "⚠️  npm nie znaleziony, instaluję Python serwer"; \
 	fi
@@ -112,22 +123,13 @@ serve:
 # Uruchomienie testów
 test:
 	@echo "🧪 Uruchamianie testów..."
-	@echo "📝 Generowanie raportu testów..."
-	@node -e " \
-		const fs = require('fs'); \
-		const { execSync } = require('child_process'); \
-		console.log('🔍 Sprawdzanie struktury plików...'); \
-		const files = ['index.html', 'validation-tests.js', 'test-runner.html']; \
-		files.forEach(file => { \
-			if (fs.existsSync(file)) { \
-				console.log('✅ ' + file + ' - OK'); \
-			} else { \
-				console.log('❌ ' + file + ' - BRAK'); \
-			} \
-		}); \
-		console.log('📊 Raport testów zapisany w logs/test.log'); \
-	" 2>/dev/null || echo "⚠️  Node.js niedostępny, używam alternatywnego testu"
-	@make test-files
+	@if command -v node >/dev/null 2>&1; then \
+		echo "🔧 Uruchamianie testów Node.js..."; \
+		npm run test 2>/dev/null || node src/tests/test-runner.js all; \
+	else \
+		echo "⚠️  Node.js niedostępny, używam alternatywnego testu"; \
+		make test-files; \
+	fi
 
 # Test plików
 test-files:
@@ -302,6 +304,164 @@ quick-start: setup
 full-cycle: clean setup test validate report
 	@echo "🎯 Pełny cykl deweloperski zakończony!"
 	@echo "📊 Sprawdź raporty w katalogu reports/"
+
+# Szybki test z kopiowaniem wyników
+quick-test:
+	@echo "⚡ Szybki test z kopiowaniem wyników..."
+	@./quick-test.sh test
+
+# Test z kopiowaniem do schowka
+test-copy:
+	@echo "📋 Test z automatycznym kopiowaniem..."
+	@./quick-test.sh full
+
+# Uruchom panel testów w przeglądarce
+open-test-panel:
+	@echo "🧪 Otwieranie panelu testów..."
+	@if command -v xdg-open >/dev/null 2>&1; then \
+		xdg-open test-runner.html; \
+	elif command -v open >/dev/null 2>&1; then \
+		open test-runner.html; \
+	elif command -v start >/dev/null 2>&1; then \
+		start test-runner.html; \
+	else \
+		echo "📱 Otwórz ręcznie: file://$(PWD)/test-runner.html"; \
+	fi
+
+# Demo zaawansowanych funkcji
+demo:
+	@echo "🎬 Demo zaawansowanych funkcji..."
+	@echo "1. Uruchamianie serwera..."
+	@make start &
+	@sleep 2
+	@echo "2. Otwieranie głównej aplikacji..."
+	@make open-app
+	@echo "3. Otwieranie panelu testów..."
+	@make open-test-panel
+
+# Otwórz główną aplikację
+open-app:
+	@echo "🚀 Otwieranie głównej aplikacji..."
+	@if command -v xdg-open >/dev/null 2>&1; then \
+		xdg-open http://localhost:8080/index.html; \
+	elif command -v open >/dev/null 2>&1; then \
+		open http://localhost:8080/index.html; \
+	elif command -v start >/dev/null 2>&1; then \
+		start http://localhost:8080/index.html; \
+	else \
+		echo "📱 Otwórz ręcznie: http://localhost:8080/index.html"; \
+	fi
+
+# Eksport wyników testów
+export-results:
+	@echo "📤 Eksportowanie wyników testów..."
+	@mkdir -p exports
+	@./quick-test.sh full > exports/test-results-$(shell date +%Y%m%d-%H%M%S).md
+	@echo "✅ Wyniki wyeksportowane do katalogu exports/"
+
+# Monitoring w czasie rzeczywistym
+monitor:
+	@echo "📊 Monitoring plików w czasie rzeczywistym..."
+	@if command -v inotifywait >/dev/null 2>&1; then \
+		while inotifywait -e modify *.html *.js *.md src/**/*.js; do \
+			echo "🔄 Plik zmieniony - uruchamiam testy..."; \
+			make quick-test; \
+		done; \
+	else \
+		echo "⚠️  inotifywait niedostępny - zainstaluj inotify-tools"; \
+		echo "💡 Alternatywnie użyj: make dev"; \
+	fi
+
+# === NOWE KOMENDY NODE.JS ===
+
+# Uruchom serwer Node.js
+server:
+	@echo "🚀 Uruchamianie serwera Node.js..."
+	@if command -v node >/dev/null 2>&1; then \
+		node src/server/index.js; \
+	else \
+		echo "❌ Node.js nie znaleziony - zainstaluj Node.js"; \
+		exit 1; \
+	fi
+
+# Uruchom serwer w trybie deweloperskim
+server-dev:
+	@echo "🔥 Uruchamianie serwera Node.js w trybie deweloperskim..."
+	@if command -v node >/dev/null 2>&1; then \
+		npm run dev 2>/dev/null || node --watch src/server/index.js; \
+	else \
+		echo "❌ Node.js nie znaleziony"; \
+		exit 1; \
+	fi
+
+# Testy backend Node.js
+test-backend:
+	@echo "🔧 Uruchamianie testów backend..."
+	@if command -v node >/dev/null 2>&1; then \
+		npm run test:backend 2>/dev/null || node src/tests/test-runner.js backend; \
+	else \
+		echo "❌ Node.js nie znaleziony"; \
+		exit 1; \
+	fi
+
+# Testy frontend Node.js
+test-frontend:
+	@echo "🌐 Uruchamianie testów frontend..."
+	@if command -v node >/dev/null 2>&1; then \
+		npm run test:frontend 2>/dev/null || node src/tests/test-runner.js frontend; \
+	else \
+		echo "❌ Node.js nie znaleziony"; \
+		exit 1; \
+	fi
+
+# Testy integracyjne Node.js
+test-integration:
+	@echo "🔗 Uruchamianie testów integracyjnych..."
+	@if command -v node >/dev/null 2>&1; then \
+		npm run test:integration 2>/dev/null || node src/tests/test-runner.js integration; \
+	else \
+		echo "❌ Node.js nie znaleziony"; \
+		exit 1; \
+	fi
+
+# Wszystkie testy Node.js z kopiowaniem
+test-node:
+	@echo "🧪 Uruchamianie wszystkich testów Node.js..."
+	@if command -v node >/dev/null 2>&1; then \
+		npm run test:all 2>/dev/null || node src/tests/test-runner.js all; \
+	else \
+		echo "❌ Node.js nie znaleziony"; \
+		exit 1; \
+	fi
+
+# Walidacja systemu przez API
+validate-api:
+	@echo "🔍 Walidacja systemu przez API..."
+	@if command -v curl >/dev/null 2>&1; then \
+		echo "Sprawdzanie serwera..."; \
+		curl -s http://localhost:3000/api/health || echo "❌ Serwer niedostępny"; \
+		echo "Sprawdzanie walidacji systemu..."; \
+		curl -s http://localhost:3000/api/test/validate-system || echo "❌ API niedostępne"; \
+	else \
+		echo "❌ curl nie znaleziony - zainstaluj curl"; \
+	fi
+
+# Budowanie projektu
+build-node:
+	@echo "🏗️  Budowanie projektu Node.js..."
+	@if command -v node >/dev/null 2>&1; then \
+		npm run build 2>/dev/null || echo "⚠️  Brak skryptu build"; \
+		echo "✅ Projekt zbudowany"; \
+	else \
+		echo "❌ Node.js nie znaleziony"; \
+		exit 1; \
+	fi
+
+# Pełny cykl z Node.js
+full-node: install server-dev &
+	@sleep 3
+	@make test-node
+	@make validate-api
 
 # Pomoc dla deweloperów
 dev-help:

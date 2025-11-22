@@ -6,14 +6,14 @@ class DSLValidator {
         this.validationErrors = [];
         this.testResults = [];
         this.moduleMap = {
-            'Platnosci': ['wpłata', 'płatność', 'payment', 'przelew', 'karta'],
-            'Finanse': ['faktura', 'invoice', 'księgowość', 'raport', 'finanse', 'accounting'],
-            'Reklama': ['kampania', 'reklama', 'marketing', 'retargeting', 'ads'],
-            'Marketing': ['newsletter', 'email', 'wiadomość', 'powitalny', 'promocja'],
-            'CRM': ['klient', 'crm', 'kontakt', 'customer', 'relacje'],
-            'eDoręczenia': ['doręczenie', 'e-doręczenie', 'poczta', 'mail'],
-            'Powiadomienia': ['powiadom', 'notification', 'alert', 'inform'],
-            'Analiza': ['analiza', 'raport', 'dashboard', 'statystyki', 'metrics']
+            'Platnosci': ['wpłata', 'płatność', 'payment', 'przelew', 'karta', 'transakcja', 'płaci'],
+            'Finanse': ['faktura', 'fakturę', 'invoice', 'księgowość', 'raport', 'finanse', 'accounting', 'wystaw', 'wystawić'],
+            'Reklama': ['kampania', 'kampanię', 'reklama', 'marketing', 'retargeting', 'ads', 'uruchom', 'uruchamianie'],
+            'Marketing': ['newsletter', 'email', 'wiadomość', 'powitalny', 'promocja', 'wyślij', 'wysłanie'],
+            'CRM': ['klient', 'crm', 'kontakt', 'customer', 'relacje', 'dodaj do crm', 'dodaj'],
+            'eDoręczenia': ['doręczenie', 'e-doręczenie', 'poczta', 'mail', 'wysłanie'],
+            'Powiadomienia': ['powiadom', 'notification', 'alert', 'inform', 'komunikat'],
+            'Analiza': ['analiza', 'raport', 'dashboard', 'statystyki', 'metrics', 'dane']
         };
     }
 
@@ -201,8 +201,33 @@ class DSLValidator {
         if (typeof text !== 'string' || text.trim().length === 0) {
             return 'invalid_id';
         }
-        return text.normalize('NFD').replace(/[\u0300-\u036f]/g,'')
-            .replace(/[^a-zA-Z0-9_]/g,'_').replace(/_+/g,'_').replace(/^_|_$/g,'');
+        
+        // Mapa polskich znaków na łacińskie
+        const polishMap = {
+            'ą': 'a', 'ć': 'c', 'ę': 'e', 'ł': 'l', 'ń': 'n', 'ó': 'o', 'ś': 's', 'ź': 'z', 'ż': 'z',
+            'Ą': 'A', 'Ć': 'C', 'Ę': 'E', 'Ł': 'L', 'Ń': 'N', 'Ó': 'O', 'Ś': 'S', 'Ź': 'Z', 'Ż': 'Z'
+        };
+        
+        let result = text.trim();
+        
+        // Zamień polskie znaki
+        for (const [polish, latin] of Object.entries(polishMap)) {
+            result = result.replace(new RegExp(polish, 'g'), latin);
+        }
+        
+        // Normalizuj i usuń diakrytyki
+        result = result.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        
+        // Zamień niedozwolone znaki na podkreślenia
+        result = result.replace(/[^a-zA-Z0-9_]/g, '_');
+        
+        // Usuń wielokrotne podkreślenia
+        result = result.replace(/_+/g, '_');
+        
+        // Usuń podkreślenia na początku i końcu
+        result = result.replace(/^_|_$/g, '');
+        
+        return result || 'sanitized_id';
     }
 
     testWorkflowValidation() {

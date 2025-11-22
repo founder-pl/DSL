@@ -1,4 +1,7 @@
 .idea
+package-lock.json
+test-results.txt
+
 # Logs
 logs
 *.log

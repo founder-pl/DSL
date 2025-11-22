@@ -66,78 +66,62 @@ steps:
 <h2>🧪 Testy i Walidacja</h2>
 <p>
     <a href="test-runner.html" target="_blank" style="display: inline-block; padding: 10px 20px; background-color: #007bff; color: white; text-decoration: none; border-radius: 4px;">
-        🚀 Otwórz panel testów i walidacji
+        Otwórz panel testów i walidacji
     </a>
 </p>
 
-<script>
+<script type="module">
+    import { TextSanitizer } from "./src/core/sanitizer.js";
+    import { ModuleMapper } from "./src/core/module-mapper.js";
+    import { generateMermaid as genMermaid } from "./src/core/diagram.js";
+    import { validateWorkflow as validateWF } from "./src/core/validator.js";
+    import { parseSentence, buildStep } from "./src/core/nlp.js";
+    import EventCore from "./src/core/event-store.js";
+    import { saveState, loadState, saveYAML, loadYAML, hasStorage } from "./src/core/persistence.js";
     mermaid.initialize({startOnLoad:false, theme:'neutral'});
 
     // --- Event Store ---
-    let eventStore = [];
-    let readModel = [];
-    
+    const eventCore = new EventCore();
+    const eventStore = eventCore.eventStore;
+    const readModel = eventCore.readModel;
+    window.eventStore = eventStore;
+    window.readModel = readModel;
+    const sanitizer = new TextSanitizer();
+    const mapper = new ModuleMapper();
+    window.sanitizer = sanitizer;
+    window.mapper = mapper;
+
     // --- Zaawansowane funkcje ---
-    let advancedFeatures = new AdvancedWorkflowFeatures();
-    let diagramEnhancements = new DiagramEnhancements();
+    let advancedFeatures = new window.AdvancedWorkflowFeatures();
+    let diagramEnhancements = new window.DiagramEnhancements();
 
     // --- Sanitacja ID ---
     function sanitizeId(text){
-        return text.normalize('NFD').replace(/[\u0300-\u036f]/g,'')
-            .replace(/[^a-zA-Z0-9_]/g,'_').replace(/_+/g,'_').replace(/^_|_$/g,'');
+        return sanitizer.sanitizeId(text);
     }
+    // expose for test-runner compatibility
+    window.sanitizeId = sanitizeId;
 
     // --- Rozszerzone mapowanie modułów ---
     function getModuleForKeywords(text) {
-        const moduleMap = {
-            'Platnosci': ['wpłata', 'płatność', 'payment', 'przelew', 'karta'],
-            'Finanse': ['faktura', 'invoice', 'księgowość', 'raport', 'finanse', 'accounting'],
-            'Reklama': ['kampania', 'reklama', 'marketing', 'retargeting', 'ads'],
-            'Marketing': ['newsletter', 'email', 'wiadomość', 'powitalny', 'promocja'],
-            'CRM': ['klient', 'crm', 'kontakt', 'customer', 'relacje'],
-            'eDoręczenia': ['doręczenie', 'e-doręczenie', 'poczta', 'mail'],
-            'Powiadomienia': ['powiadom', 'notification', 'alert', 'inform'],
-            'Analiza': ['analiza', 'raport', 'dashboard', 'statystyki', 'metrics']
-        };
-        
-        const textLower = text.toLowerCase();
-        for (const [module, keywords] of Object.entries(moduleMap)) {
-            if (keywords.some(keyword => textLower.includes(keyword))) {
-                return module;
-            }
-        }
-        return 'Default';
+        return mapper.getModuleForKeywords(text);
     }
+    window.getModuleForKeywords = getModuleForKeywords;
 
     // --- Generowanie Mermaid workflow ---
     function generateMermaid(workflow){
-        let code = "flowchart TD\n";
-        const modules = {};
-        workflow.steps.forEach(step=>{
-            const mod = step.module || "Default";
-            if(!modules[mod]) modules[mod] = [];
-            modules[mod].push(step);
-        });
-
-        Object.keys(modules).forEach(mod=>{
-            code += `subgraph ${sanitizeId(mod)}[${mod}]\n`;
-            modules[mod].forEach(step=>{
-                const stepId = sanitizeId(step.id);
-                code += `  ${stepId}["${step.name}"]:::action-node\n`;
-                step.actions.forEach((a,i)=>{
-                    const actionId = sanitizeId(a.id);
-                    code += `  ${actionId}["${a.name}"]:::action-node\n`;
-                    code += `  ${stepId} --> ${actionId}\n`;
-                });
-            });
-            code += `end\n`;
-        });
-        code += 'classDef action-node fill:#f9f,stroke:#333,stroke-width:1px;\n';
-        return code;
+        return genMermaid(workflow, sanitizer);
     }
 
     // --- Renderowanie diagramu workflow ---
     function renderDiagram(workflow){
+        const errs = validateWF(workflow) || [];
+        if (errs.length){
+            const divErr = document.getElementById("diagram");
+            divErr.textContent = "flowchart TD\nError[\"Błąd walidacji workflow\"]";
+            mermaid.init(undefined, divErr);
+            return;
+        }
         const code = generateMermaid(workflow);
         const div = document.getElementById("diagram");
         div.textContent = code;
@@ -158,18 +142,20 @@ steps:
 
     // --- Command Handler ---
     function sendCommand(actionName){
-        const timestamp = new Date().toISOString();
-        const event = {actionName, timestamp};
-        eventStore.push(event);
-        processEvent(event);
+        const event = eventCore.recordAction(actionName);
         updateLog(event);
+        // persist state if available
+        try { if (hasStorage()) saveState('dsl_state', eventCore.toState()); } catch(_){}
+        return event;
     }
+    window.sendCommand = sendCommand;
 
     // --- Event Processor ---
     function processEvent(event){
-        // Aktualizacja Read Model
-        readModel.push({actionName: event.actionName, status: "done", timestamp: event.timestamp});
+        // handled internally by EventCore; kept for compatibility
+        return;
     }
+    window.processEvent = processEvent;
 
     // --- Aktualizacja logu ---
     function updateLog(event){
@@ -179,38 +165,26 @@ steps:
 
     // --- NLP parser zdań ---
     document.getElementById("sentence-btn").addEventListener("click",()=>{
-        const sentence = document.getElementById("sentence-editor").value;
-        if(!sentence) return;
-        const match = sentence.match(/Gdy (.+?), (.+)/i);
-        if(!match){ alert("Niepoprawny format zdania."); return; }
-
-        const stepNameRaw = match[1].trim();
-        const stepName = sanitizeId(stepNameRaw);
-        const actionsText = match[2].split(" i ").map(a=>a.trim().replace(/\.$/,''));
-        // Rozszerzone mapowanie modułów
-        const stepModule = getModuleForKeywords(stepNameRaw);
-
-        const newStep = {
-            id: stepName,
-            name: stepNameRaw,
-            module: stepModule,
-            actions: actionsText.map((a,i)=>({id:stepName+"_action"+(i+1), name:a, module:getModuleForKeywords(a)}))
-        };
-
         try{
+            const sentence = document.getElementById("sentence-editor").value;
+            if(!sentence) return;
+            const parsed = parseSentence(sentence);
+            const step = buildStep(parsed.condition, parsed.actions, sanitizer, mapper);
             const workflow = jsyaml.load(document.getElementById("yaml-editor").value);
-            workflow.steps.push(newStep);
+            workflow.steps.push(step);
             document.getElementById("yaml-editor").value = jsyaml.dump(workflow);
             renderDiagram(workflow);
-            actionsText.forEach(a=>sendCommand(a));
+            step.actions.forEach(a=>sendCommand(a.name));
             document.getElementById("sentence-editor").value="";
-        }catch(e){ alert("Błąd YAML: "+e.message);}
+        }catch(e){ alert("Błąd: "+e.message); }
     });
 
     // --- Aktualizacja workflow z YAML ---
     document.getElementById("update-btn").addEventListener("click",()=>{
         try{
             const workflow = jsyaml.load(document.getElementById("yaml-editor").value);
+            // persist YAML
+            try { if (hasStorage()) saveYAML('dsl_yaml', document.getElementById("yaml-editor").value); } catch(_){}
             renderDiagram(workflow);
         }catch(e){ alert("Błąd YAML: "+e.message);}
     });
@@ -227,6 +201,350 @@ flowchart LR
 `;
     document.getElementById("cqrs-diagram").textContent = cqrsDiagram;
     mermaid.init(undefined, document.getElementById("cqrs-diagram"));
+
+    // === OBSŁUGA ZAAWANSOWANYCH FUNKCJI ===
+
+    // Zaawansowane NLP
+    document.getElementById("advanced-nlp-btn").addEventListener("click", () => {
+        const sentence = document.getElementById("sentence-editor").value;
+        if (!sentence) {
+            alert("Wprowadź zdanie do analizy");
+            return;
+        }
+
+        const result = advancedFeatures.parseComplexSentence(sentence);
+        if (result) {
+            showAdvancedPanel("Zaawansowane NLP", `
+                <h4>Wynik analizy zdania:</h4>
+                <p><strong>Typ:</strong> ${result.type}</p>
+                <p><strong>Warunek:</strong> ${result.condition}</p>
+                <p><strong>Akcje:</strong> ${result.actions.map(a => a.name).join(', ')}</p>
+                <p><strong>Moduł:</strong> ${result.module}</p>
+                <button onclick="addAdvancedWorkflow(${JSON.stringify(result).replace(/"/g, '&quot;')})">Dodaj do workflow</button>
+            `);
+        } else {
+            alert("Nie udało się przeanalizować zdania");
+        }
+    });
+
+    // Szablony workflow
+    document.getElementById("templates-btn").addEventListener("click", () => {
+        const templates = advancedFeatures.getWorkflowTemplates();
+        let content = '<h4>Dostępne szablony workflow:</h4>';
+        templates.forEach((template, index) => {
+            content += `
+                <div style="border: 1px solid #ddd; padding: 10px; margin: 10px 0; border-radius: 4px;">
+                    <h5>${template.name}</h5>
+                    <p>${template.description}</p>
+                    <p><strong>Kroki:</strong> ${template.steps.map(s => s.name).join(' → ')}</p>
+                    <button onclick="loadTemplate(${index})">Użyj szablonu</button>
+                </div>
+            `;
+        });
+        showAdvancedPanel("Szablony Workflow", content);
+    });
+
+    // Harmonogram zadań
+    document.getElementById("schedule-btn").addEventListener("click", () => {
+        const content = `
+            <h4>Zaplanuj zadanie:</h4>
+            <div style="margin: 10px 0;">
+                <label>Nazwa zadania:</label><br>
+                <input type="text" id="task-name" style="width: 100%; margin: 5px 0;">
+            </div>
+            <div style="margin: 10px 0;">
+                <label>Typ harmonogramu:</label><br>
+                <select id="schedule-type" style="width: 100%; margin: 5px 0;">
+                    <option value="interval">Co X minut</option>
+                    <option value="daily">Codziennie</option>
+                    <option value="weekly">Co tydzień</option>
+                </select>
+            </div>
+            <div style="margin: 10px 0;">
+                <label>Wartość:</label><br>
+                <input type="number" id="schedule-value" style="width: 100%; margin: 5px 0;" placeholder="np. 30 (minut)">
+            </div>
+            <button onclick="scheduleTask()">Zaplanuj zadanie</button>
+            <div id="scheduled-tasks" style="margin-top: 20px;"></div>
+        `;
+        showAdvancedPanel("Harmonogram Zadań", content);
+        displayScheduledTasks();
+    });
+
+    // Webhooks
+    document.getElementById("webhooks-btn").addEventListener("click", () => {
+        const content = `
+            <h4>Konfiguracja Webhook:</h4>
+            <div style="margin: 10px 0;">
+                <label>URL:</label><br>
+                <input type="url" id="webhook-url" style="width: 100%; margin: 5px 0;" placeholder="https://example.com/webhook">
+            </div>
+            <div style="margin: 10px 0;">
+                <label>Zdarzenia (oddziel przecinkami):</label><br>
+                <input type="text" id="webhook-events" style="width: 100%; margin: 5px 0;" placeholder="action_executed, workflow_completed">
+            </div>
+            <button onclick="registerWebhook()">Zarejestruj webhook</button>
+            <div id="registered-webhooks" style="margin-top: 20px;"></div>
+        `;
+        showAdvancedPanel("Webhooks", content);
+        displayWebhooks();
+    });
+
+    // Metryki
+    document.getElementById("metrics-btn").addEventListener("click", () => {
+        const metrics = advancedFeatures.getMetricsSummary();
+        const content = `
+            <h4>Metryki systemu:</h4>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin: 15px 0;">
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; text-align: center;">
+                    <h3 style="margin: 0; color: #28a745;">${metrics.executedActions}</h3>
+                    <p style="margin: 5px 0;">Wykonane akcje</p>
+                </div>
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; text-align: center;">
+                    <h3 style="margin: 0; color: #dc3545;">${metrics.failedActions}</h3>
+                    <p style="margin: 5px 0;">Nieudane akcje</p>
+                </div>
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; text-align: center;">
+                    <h3 style="margin: 0; color: #007bff;">${metrics.totalWorkflowRuns}</h3>
+                    <p style="margin: 5px 0;">Uruchomienia workflow</p>
+                </div>
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; text-align: center;">
+                    <h3 style="margin: 0; color: #6f42c1;">${metrics.successRate}</h3>
+                    <p style="margin: 5px 0;">Wskaźnik sukcesu</p>
+                </div>
+            </div>
+            <button onclick="exportMetrics()">Eksportuj metryki</button>
+        `;
+        showAdvancedPanel("Metryki", content);
+    });
+
+    // Warunki
+    document.getElementById("conditions-btn").addEventListener("click", () => {
+        const content = `
+            <h4>Konfiguracja warunków:</h4>
+            <div style="margin: 10px 0;">
+                <label>Pole:</label><br>
+                <input type="text" id="condition-field" style="width: 100%; margin: 5px 0;" placeholder="np. kwota">
+            </div>
+            <div style="margin: 10px 0;">
+                <label>Operator:</label><br>
+                <select id="condition-operator" style="width: 100%; margin: 5px 0;">
+                    <option value=">">większe niż</option>
+                    <option value="<">mniejsze niż</option>
+                    <option value="=">równe</option>
+                    <option value="!=">różne od</option>
+                    <option value="contains">zawiera</option>
+                </select>
+            </div>
+            <div style="margin: 10px 0;">
+                <label>Wartość:</label><br>
+                <input type="text" id="condition-value" style="width: 100%; margin: 5px 0;" placeholder="np. 1000">
+            </div>
+            <button onclick="addCondition()">Dodaj warunek</button>
+            <div id="conditions-list" style="margin-top: 20px;"></div>
+        `;
+        showAdvancedPanel("Warunki", content);
+        displayConditions();
+    });
+
+    // === FUNKCJE POMOCNICZE ===
+
+    function showAdvancedPanel(title, content) {
+        document.getElementById("panel-title").textContent = title;
+        document.getElementById("panel-content").innerHTML = content;
+        document.getElementById("advanced-panel").style.display = "block";
+    }
+
+    function addAdvancedWorkflow(result) {
+        try {
+            const workflow = jsyaml.load(document.getElementById("yaml-editor").value);
+            const newStep = {
+                id: result.condition.replace(/\s+/g, '_'),
+                name: result.condition,
+                module: result.module,
+                type: result.type,
+                actions: result.actions
+            };
+            workflow.steps.push(newStep);
+            document.getElementById("yaml-editor").value = jsyaml.dump(workflow);
+            renderDiagram(workflow);
+            alert("Zaawansowany workflow dodany!");
+        } catch (e) {
+            alert("Błąd dodawania workflow: " + e.message);
+        }
+    }
+
+    function loadTemplate(index) {
+        const templates = advancedFeatures.getWorkflowTemplates();
+        const template = templates[index];
+        
+        const workflow = {
+            workflow: template.name,
+            steps: template.steps.map((step, i) => ({
+                id: step.name.replace(/\s+/g, '_').toLowerCase(),
+                name: step.name,
+                module: step.module,
+                actions: [{
+                    id: `action_${i}`,
+                    name: step.name,
+                    module: step.module
+                }]
+            }))
+        };
+        
+        document.getElementById("yaml-editor").value = jsyaml.dump(workflow);
+        renderDiagram(workflow);
+        alert(`Szablon "${template.name}" załadowany!`);
+    }
+
+    function scheduleTask() {
+        const name = document.getElementById("task-name").value;
+        const type = document.getElementById("schedule-type").value;
+        const value = parseInt(document.getElementById("schedule-value").value);
+        
+        if (!name || !value) {
+            alert("Wypełnij wszystkie pola");
+            return;
+        }
+        
+        const schedule = { type, value };
+        if (type === 'daily' || type === 'weekly') {
+            schedule.hour = 9; // Domyślnie 9:00
+            schedule.minute = 0;
+            if (type === 'weekly') schedule.dayOfWeek = 1; // Poniedziałek
+        } else {
+            schedule.minutes = value;
+        }
+        
+        const task = { name, actions: ['wykonaj zadanie'] };
+        advancedFeatures.scheduleTask(task, schedule);
+        displayScheduledTasks();
+        alert("Zadanie zaplanowane!");
+    }
+
+    function displayScheduledTasks() {
+        const container = document.getElementById("scheduled-tasks");
+        if (!container) return;
+        
+        let html = "<h5>Zaplanowane zadania:</h5>";
+        advancedFeatures.scheduledTasks.forEach(task => {
+            html += `
+                <div style="border: 1px solid #ddd; padding: 8px; margin: 5px 0; border-radius: 3px;">
+                    <strong>${task.task.name}</strong><br>
+                    <small>Następne uruchomienie: ${new Date(task.nextRun).toLocaleString('pl-PL')}</small>
+                </div>
+            `;
+        });
+        container.innerHTML = html;
+    }
+
+    function registerWebhook() {
+        const url = document.getElementById("webhook-url").value;
+        const events = document.getElementById("webhook-events").value.split(',').map(e => e.trim());
+        
+        if (!url || !events.length) {
+            alert("Wypełnij wszystkie pola");
+            return;
+        }
+        
+        advancedFeatures.registerWebhook(url, events);
+        displayWebhooks();
+        alert("Webhook zarejestrowany!");
+    }
+
+    function displayWebhooks() {
+        const container = document.getElementById("registered-webhooks");
+        if (!container) return;
+        
+        let html = "<h5>Zarejestrowane webhooks:</h5>";
+        advancedFeatures.webhooks.forEach(webhook => {
+            html += `
+                <div style="border: 1px solid #ddd; padding: 8px; margin: 5px 0; border-radius: 3px;">
+                    <strong>${webhook.url}</strong><br>
+                    <small>Zdarzenia: ${webhook.events.join(', ')}</small><br>
+                    <small>Status: ${webhook.status}</small>
+                </div>
+            `;
+        });
+        container.innerHTML = html;
+    }
+
+    function addCondition() {
+        const field = document.getElementById("condition-field").value;
+        const operator = document.getElementById("condition-operator").value;
+        const value = document.getElementById("condition-value").value;
+        
+        if (!field || !value) {
+            alert("Wypełnij wszystkie pola");
+            return;
+        }
+        
+        const condition = { field, operator, value, raw: `${field} ${operator} ${value}` };
+        advancedFeatures.conditions.push(condition);
+        displayConditions();
+        alert("Warunek dodany!");
+    }
+
+    function displayConditions() {
+        const container = document.getElementById("conditions-list");
+        if (!container) return;
+        
+        let html = "<h5>Skonfigurowane warunki:</h5>";
+        advancedFeatures.conditions.forEach((condition, index) => {
+            html += `
+                <div style="border: 1px solid #ddd; padding: 8px; margin: 5px 0; border-radius: 3px;">
+                    <code>${condition.raw}</code>
+                </div>
+            `;
+        });
+        container.innerHTML = html;
+    }
+
+    function exportMetrics() {
+        const metrics = advancedFeatures.getMetricsSummary();
+        const blob = new Blob([JSON.stringify(metrics, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'metrics.json';
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
+    // Rozszerz funkcję sendCommand o metryki
+    const originalSendCommand = sendCommand;
+    sendCommand = function(actionName) {
+        try {
+            originalSendCommand(actionName);
+            advancedFeatures.recordMetric('action_executed', 1, { actionName });
+            // Trigger webhooks
+            advancedFeatures.triggerWebhooks('action_executed', { actionName, timestamp: new Date().toISOString() });
+        } catch (error) {
+            advancedFeatures.recordMetric('action_failed', 1, { actionName, error: error.message });
+        }
+    };
+
+    // --- Inicjalizacja: wczytaj YAML i stan z localStorage ---
+    try{
+        if (hasStorage()){
+            const storedYaml = loadYAML('dsl_yaml');
+            if (storedYaml && storedYaml.trim().length){
+                document.getElementById("yaml-editor").value = storedYaml;
+            }
+            const storedState = loadState('dsl_state');
+            if (storedState){
+                eventCore.initFromState(storedState);
+            }
+        }
+    }catch(_){}
+
+    // Auto-zapis YAML podczas edycji
+    try{
+        const yamlEl = document.getElementById("yaml-editor");
+        yamlEl.addEventListener('input', ()=>{
+            try { if (hasStorage()) saveYAML('dsl_yaml', yamlEl.value); } catch(_){}
+        });
+    }catch(_){}
 
     // --- Początkowe renderowanie workflow ---
     try{
