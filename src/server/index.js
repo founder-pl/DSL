@@ -17,8 +17,9 @@ import { suggestModulesForText, analyzeSentenceAndSuggest } from '../core/sugges
 import { HistoryManager } from '../core/history.js';
 import { initSchema, saveWorkflow, saveEvent, saveWebhook, exportDatabase, importDatabase, getDBPath } from './db.js';
 import fs from 'fs';
+import { spawn } from 'child_process';
 import { findDuplicateWorkflows } from '../core/validator.js';
-import { generateJSFromDSL } from '../core/generator.js';
+import { generateJSFromDSL, buildScaffolds, toWorkflows } from '../core/generator.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -46,7 +47,9 @@ class DSLServer {
                 directives: {
                     defaultSrc: ["'self'"],
                     styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
+                    styleSrcAttr: ["'unsafe-inline'"],
                     scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
+                    scriptSrcAttr: ["'unsafe-inline'"],
                     imgSrc: ["'self'", "data:", "https:"],
                 }
             }
@@ -88,6 +91,12 @@ class DSLServer {
         
         // Utility routes
         this.setupUtilityRoutes();
+        // Processes & scaffolds routes
+        this.setupProcessesRoutes();
+        // Mock endpoints used by generated scripts
+        this.setupMockRoutes();
+        // Exec generated scripts
+        this.setupExecRoutes();
         
         // Testing routes
         this.setupTestingRoutes();
@@ -659,6 +668,165 @@ class DSLServer {
             }
         });
         this.app.use('/api/webhooks', webhooksRouter);
+    }
+
+    // Parse procesy.txt, split by domain and optionally write files; generate YAML, diagrams, scaffolds
+    setupProcessesRoutes(){
+        const router = express.Router();
+
+        const domainsMap = [
+            { match: /Procesy\s+finansowe/i, key: 'Finanse' },
+            { match: /^\s*2\./i, key: 'Marketing' },
+            { match: /^\s*3\./i, key: 'CRM' },
+            { match: /^\s*4\./i, key: 'Obsługa' },
+            { match: /^\s*5\./i, key: 'Sprzedaż' },
+            { match: /^\s*6\./i, key: 'HR' },
+            { match: /^\s*7\./i, key: 'Administracja' },
+            { match: /^\s*8\./i, key: 'Logistyka' },
+            { match: /^\s*9\./i, key: 'IT' },
+        ];
+
+        const ensureDir = (p) => { try { fs.mkdirSync(p, { recursive: true }); } catch(_){} };
+        const writeFile = (p, data) => fs.writeFileSync(p, data);
+        const processesPath = join(projectRoot, 'procesy.txt');
+
+        const splitDomains = (content) => {
+            const lines = String(content||'').split(/\r?\n/);
+            let current = 'Finanse';
+            const buckets = new Map();
+            const setCur = (k)=>{ current = k; if (!buckets.has(k)) buckets.set(k, []); };
+            setCur(current);
+            for (const raw of lines){
+                const line = raw.trim();
+                if (!line){ buckets.get(current).push(''); continue; }
+                const found = domainsMap.find(d => d.match.test(line));
+                if (found){ setCur(found.key); continue; }
+                buckets.get(current).push(raw);
+            }
+            return buckets;
+        };
+
+        // Split procesy.txt by domain
+        router.get('/split', (req, res) => {
+            try{
+                const { write = '1' } = req.query || {};
+                if (!fs.existsSync(processesPath)) return res.status(404).json({ error:'procesy.txt not found' });
+                const content = fs.readFileSync(processesPath, 'utf-8');
+                const buckets = splitDomains(content);
+                const outDir = join(projectRoot, 'generated', 'domains');
+                if (String(write) !== '0'){ ensureDir(outDir); }
+                const files = [];
+                for (const [k, arr] of buckets.entries()){
+                    if (String(write) !== '0'){
+                        const file = join(outDir, `${k}.txt`);
+                        writeFile(file, arr.join('\n'));
+                        files.push(file);
+                    }
+                }
+                res.json({ domains: Array.from(buckets.keys()), files });
+            }catch(e){ res.status(400).json({ error: 'split failed', message: e.message }); }
+        });
+
+        // Generate DSL, diagrams, scaffolds for a domain or all
+        router.post('/generate', async (req, res) => {
+            try{
+                const { domain = 'all' } = req.query || {};
+                const buckets = splitDomains(fs.readFileSync(processesPath, 'utf-8'));
+                const selected = domain === 'all' ? Array.from(buckets.keys()) : [domain];
+                const files = [];
+                const diagramDir = join(projectRoot, 'generated', 'diagrams'); ensureDir(diagramDir);
+                const yamlDir = join(projectRoot, 'generated', 'domains'); ensureDir(yamlDir);
+                const scriptsRoot = join(projectRoot, 'generated', 'scripts'); ensureDir(scriptsRoot);
+                const browserRoot = join(projectRoot, 'generated', 'browser'); ensureDir(browserRoot);
+                let totalActions = 0;
+                const results = [];
+
+                for (const key of selected){
+                    const text = (buckets.get(key) || []).join('\n');
+                    // Extract sentences
+                    const list = parseMultipleSentences(text);
+                    const workflows = [];
+                    for (const s of list){
+                        try{
+                            await this.engine.createWorkflowFromNLP(s);
+                            const wfEvent = this.engine.getEventsByType('WorkflowCreated').slice(-1)[0];
+                            if (wfEvent?.payload) workflows.push(wfEvent.payload);
+                        }catch(_){ }
+                    }
+                    // Write YAML
+                    const y = exportWorkflowToYAML({ workflows });
+                    const yfile = join(yamlDir, `${key}.yaml`); writeFile(yfile, y); files.push(yfile);
+                    // Write Mermaid diagram (one merged diagram)
+                    const steps = workflows.map(w => ({ id: w.id, name: w.name, module: w.module, actions: w.actions }));
+                    const mmd = generateMermaid({ steps });
+                    const dfile = join(diagramDir, `${key}.mmd`); writeFile(dfile, mmd); files.push(dfile);
+                    // Build scaffolds
+                    const scaff = buildScaffolds({ workflows });
+                    totalActions += scaff.count;
+                    const writeScaff = (arr)=>{ for (const f of arr){ const full = join(projectRoot, f.filename); ensureDir(dirname(full)); writeFile(full, f.content); try{ if (full.endsWith('.sh')) fs.chmodSync(full, 0o755); }catch(_){} files.push(full); } };
+                    writeScaff(scaff.bash); writeScaff(scaff.node); writeScaff(scaff.browser);
+                    writeScaff(scaff.python);
+                    results.push({ domain: key, workflows: workflows.length, actions: scaff.count });
+                }
+                res.json({ success:true, domains: selected, files, totalActions, results });
+            }catch(e){ res.status(400).json({ error: 'generate failed', message: e.message }); }
+        });
+
+        // List generated artifacts
+        router.get('/list', (req, res) => {
+            try{
+                const base = join(projectRoot, 'generated');
+                const walk = (p)=>{ let out=[]; if (!fs.existsSync(p)) return out; for (const n of fs.readdirSync(p)){ const fp = join(p,n); const st = fs.statSync(fp); if (st.isDirectory()) out=out.concat(walk(fp)); else out.push(fp); } return out; };
+                res.json({ files: walk(base) });
+            }catch(e){ res.status(400).json({ error:'list failed', message:e.message }); }
+        });
+
+        this.app.use('/api/processes', router);
+    }
+
+    // Simple mock endpoints for generated scripts/APIs
+    setupMockRoutes(){
+        const router = express.Router();
+        router.post('/send-email', (req,res)=>{ res.json({ ok:true, kind:'email', to: req.body?.to || 'someone@example.com', ts: new Date().toISOString() }); });
+        router.post('/generate-invoice', (req,res)=>{ res.json({ ok:true, invoiceId: 'INV-'+Date.now(), ts: new Date().toISOString() }); });
+        router.get('/invoice/:id', (req,res)=>{ res.json({ ok:true, invoice: { id: req.params.id, amount: 123.45, currency:'PLN' } }); });
+        router.get('/fetch-page', (req,res)=>{ const url = req.query.url || 'https://example.org'; res.json({ ok:true, url, pageTitle:'Example Page' }); });
+        router.post('/generate-report', (req,res)=>{ res.json({ ok:true, reportId: 'RPT-'+Date.now() }); });
+        router.post('/action', (req,res)=>{ res.json({ ok:true, action: req.body?.action || 'generic' }); });
+        this.app.use('/api/mock', router);
+    }
+
+    // Execute generated scripts via API (bash/node/python)
+    setupExecRoutes(){
+        const router = express.Router();
+        const baseDir = join(projectRoot, 'generated', 'scripts');
+        const sanitize = (s)=> String(s||'').replace(/[^a-zA-Z0-9_\-]/g,'');
+        const run = (cmd, args, cwd) => new Promise((resolve)=>{
+            try{
+                const p = spawn(cmd, args, { cwd, env: process.env });
+                let out=''; let err='';
+                p.stdout.on('data',d=>out+=d.toString());
+                p.stderr.on('data',d=>err+=d.toString());
+                p.on('close',code=>resolve({ code, out, err }));
+            }catch(e){ resolve({ code:-1, out:'', err: e.message }); }
+        });
+
+        router.post('/:lang/:action', async (req,res)=>{
+            try{
+                const lang = sanitize(req.params.lang);
+                const action = sanitize(req.params.action);
+                let file, cmd, args;
+                if (lang === 'bash'){ file = join(baseDir, 'bash', `${action}.sh`); cmd='bash'; args=[file]; }
+                else if (lang === 'node'){ file = join(baseDir, 'node', `${action}.js`); cmd='node'; args=[file]; }
+                else if (lang === 'python'){ file = join(baseDir, 'python', `${action}.py`); cmd='python3'; args=[file]; }
+                else return res.status(400).json({ error:'invalid lang' });
+                if (!fs.existsSync(file)) return res.status(404).json({ error:'script not found', file });
+                const r = await run(cmd, args, projectRoot);
+                res.json({ ok: r.code===0, code: r.code, stdout: r.out, stderr: r.err, file });
+            }catch(e){ res.status(400).json({ error:'exec failed', message: e.message }); }
+        });
+
+        this.app.use('/api/exec', router);
     }
     
     setupFrontendRoutes() {

@@ -1,0 +1,171 @@
+Procesy finansowe
+
+Gdy wpłata klienta nastąpi, wystaw fakturę i dodaj wpis w księgowości.
+
+Gdy faktura zostanie opłacona, wyślij potwierdzenie i zaktualizuj raport sprzedaży.
+
+Gdy wykryjesz zaległą płatność, wyślij przypomnienie i oznacz klienta jako ryzykownego.
+
+Gdy koszt zostanie zaksięgowany, zaktualizuj budżet projektu i powiadom managera.
+
+Gdy klient zgłosi reklamację płatności, utwórz sprawę i wstrzymaj dalsze obciążenia.
+
+Gdy miesięczne rozliczenie będzie gotowe, wyślij raport do zarządu i zarchiwizuj dane.
+
+Gdy otrzymasz nowe e-Doręczenie, powiadom księgowość i dodaj dokument do archiwum.
+
+Gdy wykryjesz duży przelew, oznacz transakcję do weryfikacji i powiadom dział AML.
+
+2. Marketing i automatyzacja
+
+Gdy nowy klient zapisze się na newsletter, wyślij wiadomość powitalną i dodaj go do CRM.
+
+Gdy użytkownik porzuci koszyk, wyślij przypomnienie i uruchom kampanię remarketingową.
+
+Gdy rozpoczniesz kampanię reklamową, utwórz zestaw reklam i zaplanuj budżet.
+
+Gdy kampania zakończy się, wygeneruj raport i prześlij go do działu sprzedaży.
+
+Gdy użytkownik kliknie w reklamę, oznacz lead jako aktywny i powiadom opiekuna.
+
+Gdy klient odwiedzi stronę cennika, dodaj go do segmentu „wysoka intencja zakupu” i wyślij ofertę.
+
+Gdy publikacja artykułu zostanie zatwierdzona, opublikuj ją i udostępnij w mediach społecznościowych.
+
+Gdy algorytm wykryje spadek konwersji, zmniejsz budżet kampanii i powiadom marketera.
+
+3. CRM i relacje z klientami
+
+Gdy nowy lead zostanie utworzony, przypisz opiekuna i ustaw status „Nowy”.
+
+Gdy klient odpowie na ofertę, zmień status na „W trakcie rozmów” i powiadom sprzedawcę.
+
+Gdy klient nie odpowiada przez 7 dni, wyślij follow-up i oznacz jako „zimny lead”.
+
+Gdy klient złoży zapytanie, utwórz zadanie dla zespołu i ustaw priorytet.
+
+Gdy klient podpisze umowę, zmień status na „Wygrany” i prześlij dokumenty do księgowości.
+
+Gdy klient zgłosi problem, otwórz ticket i przypisz do działu wsparcia.
+
+Gdy klient przekroczy wartość zakupów 10 000 zł, przypisz go do programu VIP i wyślij gratulacje.
+
+Gdy klient anuluje subskrypcję, zapisz powód i uruchom kampanię odzyskania.
+
+4. Obsługa klienta (Customer Support)
+
+Gdy ticket zostanie otwarty, przypisz konsultanta i ustaw czas SLA.
+
+Gdy ticket zostanie oznaczony jako pilny, powiadom supervisorów i eskaluj zgłoszenie.
+
+Gdy klient prześle załącznik, dodaj go do sprawy i poinformuj konsultanta.
+
+Gdy klient oceni rozmowę jako negatywną, otwórz zadanie naprawcze i powiadom managera.
+
+Gdy zgłoszenie zostanie zamknięte, wyślij ankietę satysfakcji i zaktualizuj statystyki.
+
+Gdy klient poprosi o zwrot, utwórz zgłoszenie finansowe i poinformuj księgowość.
+
+Gdy klient zażąda usunięcia danych, wykonaj procedurę RODO i wyślij potwierdzenie.
+
+Gdy wykryjesz wulgaryzmy w zgłoszeniu, przekieruj sprawę do działu specjalnego.
+
+5. Sprzedaż
+
+Gdy klient złoży zamówienie, zaktualizuj stan magazynowy i wyślij potwierdzenie.
+
+Gdy zamówienie zostanie skompletowane, przygotuj wysyłkę i wystaw dokument WZ.
+
+Gdy zamówienie zostanie anulowane, przywróć produkty i powiadom logistykę.
+
+Gdy lead zostanie zakwalifikowany, utwórz ofertę i wyślij ją do klienta.
+
+Gdy oferta zostanie zaakceptowana, wygeneruj umowę i wyślij ją do podpisu.
+
+Gdy rabat zostanie zatwierdzony, zaktualizuj ofertę i powiadom sprzedawcę.
+
+Gdy klient nie opłaci zamówienia, wyślij przypomnienie i ustaw status „oczekujące”.
+
+Gdy zamówienie osiągnie status „wysłane”, powiadom klienta i zaktualizuj CRM.
+
+6. HR i kadry
+
+Gdy kandydat złoży aplikację, utwórz kartę kandydata i powiadom rekrutera.
+
+Gdy kandydat przejdzie pierwszą rozmowę, zaplanuj kolejną i zaktualizuj status.
+
+Gdy nowy pracownik zostanie zatrudniony, rozpocznij onboarding i przydziel dostęp.
+
+Gdy pracownik złoży wniosek urlopowy, wyślij go do akceptacji i zaktualizuj kalendarz.
+
+Gdy urlop zostanie zatwierdzony, powiadom dział kadrowy i zaktualizuj system płacowy.
+
+Gdy pracownik zgłosi nadgodziny, dodaj je do ewidencji i powiadom managera.
+
+Gdy zbliża się koniec okresu próbnego, wyślij przypomnienie managerowi i HR.
+
+Gdy pracownik kończy współpracę, przeprowadź offboarding i dezaktywuj dostęp.
+
+7. Administracja i dokumenty
+
+Gdy nadejdzie nowe e-Doręczenie, przypisz dokument do sprawy i powiadom właściwy dział.
+
+Gdy dokument zostanie podpisany, zarchiwizuj go i wyślij kopię zainteresowanym.
+
+Gdy dokument straci ważność, oznacz go i wyślij przypomnienie.
+
+Gdy zostanie utworzona nowa umowa, prześlij ją do działu prawnego i rozpocznij proces akceptacji.
+
+Gdy otrzymasz pismo urzędowe, utwórz zadanie i przypisz odpowiedzialną osobę.
+
+Gdy wykryjesz brak skanu dokumentu, wyślij powiadomienie i dodaj zadanie do uzupełnienia.
+
+Gdy zakończy się kontrola, zarchiwizuj protokół i uzupełnij rejestr.
+
+Gdy wymagany jest podpis elektroniczny, wyślij dokument do podpisu i monitoruj status.
+
+8. Logistyka i magazyn
+
+Gdy dostawa dotrze do magazynu, przeprowadź przyjęcie i zaktualizuj stany.
+
+Gdy produkt zostanie wyczerpany, wyślij zamówienie do dostawcy i powiadom dział zakupów.
+
+Gdy produkt zostanie uszkodzony, oznacz go jako nienadający się i zgłoś reklamację.
+
+Gdy przesyłka zostanie nadana, zaktualizuj system i wyślij tracking klientowi.
+
+Gdy wykryjesz błąd inwentaryzacji, uruchom proces wyjaśniający i powiadom kierownika.
+
+Gdy zbliża się termin ważności produktu, oznacz go i powiadom o konieczności rotacji.
+
+Gdy dostawa jest opóźniona, powiadom dostawcę i zaktualizuj termin realizacji.
+
+Gdy zamówienie hurtowe zostanie potwierdzone, przygotuj paletę i zarezerwuj transport.
+
+9. IT i DevOps
+
+Gdy system zgłosi błąd krytyczny, otwórz ticket i powiadom administratora.
+
+Gdy wykryjesz próbę włamania, uruchom procedurę bezpieczeństwa i zablokuj IP.
+
+Gdy nowa wersja aplikacji zostanie wdrożona, przeprowadź testy i wyślij raport QA.
+
+Gdy zbliża się termin odnowienia certyfikatu SSL, powiadom administratora i odśwież certyfikat.
+
+Gdy usługa przestanie odpowiadać, zrestartuj instancję i wyślij alert.
+
+Gdy użytkownik utworzy zgłoszenie IT, przypisz technika i zaplanuj wizytę.
+
+Gdy backup zakończy się poprawnie, zaktualizuj raport bezpieczeństwa.
+
+Gdy monitor wykryje niski poziom zasobów, skaluj serwery i powiadom DevOps.
+
+
+---
+
+Gdy wpłata klienta nastąpi, wystaw fakturę i uruchom kampanię retargetingową.
+Gdy nadejdzie nowe e-Doręczenie, powiadom zespół i zaktualizuj raporty księgowe.
+Gdy nowy klient zapisze się na newsletter, wyślij wiadomość powitalną i dodaj go do CRM.
+Gdy faktura zostanie opłacona, wygeneruj raport sprzedaży i zaktualizuj dashboard finansowy.
+Gdy termin płatności minie, wyślij ponaglenie i utwórz zadanie w CRM.
+Gdy zapas magazynowy spadnie poniżej progu, zamów towar i powiadom dział zakupów.

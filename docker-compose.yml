@@ -1,0 +1,28 @@
+version: '3.8'
+services:
+  dsl:
+    build: .
+    container_name: dsl-server
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - ./generated:/app/generated
+      - ./procesy.txt:/app/procesy.txt:ro
+
+  e2e:
+    image: node:20-alpine
+    container_name: dsl-e2e
+    working_dir: /e2e
+    depends_on:
+      dsl:
+        condition: service_healthy
+    volumes:
+      - ./:/e2e
+    command: ["sh", "-c", "npm install && node --test src/tests/e2e-processes.test.js"]
