@@ -1,0 +1,26 @@
+
+Gdy system zgłosi błąd krytyczny, otwórz ticket i powiadom administratora.
+
+Gdy wykryjesz próbę włamania, uruchom procedurę bezpieczeństwa i zablokuj IP.
+
+Gdy nowa wersja aplikacji zostanie wdrożona, przeprowadź testy i wyślij raport QA.
+
+Gdy zbliża się termin odnowienia certyfikatu SSL, powiadom administratora i odśwież certyfikat.
+
+Gdy usługa przestanie odpowiadać, zrestartuj instancję i wyślij alert.
+
+Gdy użytkownik utworzy zgłoszenie IT, przypisz technika i zaplanuj wizytę.
+
+Gdy backup zakończy się poprawnie, zaktualizuj raport bezpieczeństwa.
+
+Gdy monitor wykryje niski poziom zasobów, skaluj serwery i powiadom DevOps.
+
+
+---
+
+Gdy wpłata klienta nastąpi, wystaw fakturę i uruchom kampanię retargetingową.
+Gdy nadejdzie nowe e-Doręczenie, powiadom zespół i zaktualizuj raporty księgowe.
+Gdy nowy klient zapisze się na newsletter, wyślij wiadomość powitalną i dodaj go do CRM.
+Gdy faktura zostanie opłacona, wygeneruj raport sprzedaży i zaktualizuj dashboard finansowy.
+Gdy termin płatności minie, wyślij ponaglenie i utwórz zadanie w CRM.
+Gdy zapas magazynowy spadnie poniżej progu, zamów towar i powiadom dział zakupów.

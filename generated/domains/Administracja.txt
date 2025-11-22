@@ -1,0 +1,16 @@
+
+Gdy nadejdzie nowe e-Doręczenie, przypisz dokument do sprawy i powiadom właściwy dział.
+
+Gdy dokument zostanie podpisany, zarchiwizuj go i wyślij kopię zainteresowanym.
+
+Gdy dokument straci ważność, oznacz go i wyślij przypomnienie.
+
+Gdy zostanie utworzona nowa umowa, prześlij ją do działu prawnego i rozpocznij proces akceptacji.
+
+Gdy otrzymasz pismo urzędowe, utwórz zadanie i przypisz odpowiedzialną osobę.
+
+Gdy wykryjesz brak skanu dokumentu, wyślij powiadomienie i dodaj zadanie do uzupełnienia.
+
+Gdy zakończy się kontrola, zarchiwizuj protokół i uzupełnij rejestr.
+
+Gdy wymagany jest podpis elektroniczny, wyślij dokument do podpisu i monitoruj status.

@@ -1,0 +1,16 @@
+
+Gdy kandydat złoży aplikację, utwórz kartę kandydata i powiadom rekrutera.
+
+Gdy kandydat przejdzie pierwszą rozmowę, zaplanuj kolejną i zaktualizuj status.
+
+Gdy nowy pracownik zostanie zatrudniony, rozpocznij onboarding i przydziel dostęp.
+
+Gdy pracownik złoży wniosek urlopowy, wyślij go do akceptacji i zaktualizuj kalendarz.
+
+Gdy urlop zostanie zatwierdzony, powiadom dział kadrowy i zaktualizuj system płacowy.
+
+Gdy pracownik zgłosi nadgodziny, dodaj je do ewidencji i powiadom managera.
+
+Gdy zbliża się koniec okresu próbnego, wyślij przypomnienie managerowi i HR.
+
+Gdy pracownik kończy współpracę, przeprowadź offboarding i dezaktywuj dostęp.

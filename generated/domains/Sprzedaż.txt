@@ -1,0 +1,16 @@
+
+Gdy klient złoży zamówienie, zaktualizuj stan magazynowy i wyślij potwierdzenie.
+
+Gdy zamówienie zostanie skompletowane, przygotuj wysyłkę i wystaw dokument WZ.
+
+Gdy zamówienie zostanie anulowane, przywróć produkty i powiadom logistykę.
+
+Gdy lead zostanie zakwalifikowany, utwórz ofertę i wyślij ją do klienta.
+
+Gdy oferta zostanie zaakceptowana, wygeneruj umowę i wyślij ją do podpisu.
+
+Gdy rabat zostanie zatwierdzony, zaktualizuj ofertę i powiadom sprzedawcę.
+
+Gdy klient nie opłaci zamówienia, wyślij przypomnienie i ustaw status „oczekujące”.
+
+Gdy zamówienie osiągnie status „wysłane”, powiadom klienta i zaktualizuj CRM.

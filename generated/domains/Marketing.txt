@@ -1,0 +1,16 @@
+
+Gdy nowy klient zapisze się na newsletter, wyślij wiadomość powitalną i dodaj go do CRM.
+
+Gdy użytkownik porzuci koszyk, wyślij przypomnienie i uruchom kampanię remarketingową.
+
+Gdy rozpoczniesz kampanię reklamową, utwórz zestaw reklam i zaplanuj budżet.
+
+Gdy kampania zakończy się, wygeneruj raport i prześlij go do działu sprzedaży.
+
+Gdy użytkownik kliknie w reklamę, oznacz lead jako aktywny i powiadom opiekuna.
+
+Gdy klient odwiedzi stronę cennika, dodaj go do segmentu „wysoka intencja zakupu” i wyślij ofertę.
+
+Gdy publikacja artykułu zostanie zatwierdzona, opublikuj ją i udostępnij w mediach społecznościowych.
+
+Gdy algorytm wykryje spadek konwersji, zmniejsz budżet kampanii i powiadom marketera.

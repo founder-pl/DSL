@@ -1,0 +1,16 @@
+
+Gdy ticket zostanie otwarty, przypisz konsultanta i ustaw czas SLA.
+
+Gdy ticket zostanie oznaczony jako pilny, powiadom supervisorów i eskaluj zgłoszenie.
+
+Gdy klient prześle załącznik, dodaj go do sprawy i poinformuj konsultanta.
+
+Gdy klient oceni rozmowę jako negatywną, otwórz zadanie naprawcze i powiadom managera.
+
+Gdy zgłoszenie zostanie zamknięte, wyślij ankietę satysfakcji i zaktualizuj statystyki.
+
+Gdy klient poprosi o zwrot, utwórz zgłoszenie finansowe i poinformuj księgowość.
+
+Gdy klient zażąda usunięcia danych, wykonaj procedurę RODO i wyślij potwierdzenie.
+
+Gdy wykryjesz wulgaryzmy w zgłoszeniu, przekieruj sprawę do działu specjalnego.

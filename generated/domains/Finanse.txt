@@ -1,0 +1,16 @@
+
+Gdy wpłata klienta nastąpi, wystaw fakturę i dodaj wpis w księgowości.
+
+Gdy faktura zostanie opłacona, wyślij potwierdzenie i zaktualizuj raport sprzedaży.
+
+Gdy wykryjesz zaległą płatność, wyślij przypomnienie i oznacz klienta jako ryzykownego.
+
+Gdy koszt zostanie zaksięgowany, zaktualizuj budżet projektu i powiadom managera.
+
+Gdy klient zgłosi reklamację płatności, utwórz sprawę i wstrzymaj dalsze obciążenia.
+
+Gdy miesięczne rozliczenie będzie gotowe, wyślij raport do zarządu i zarchiwizuj dane.
+
+Gdy otrzymasz nowe e-Doręczenie, powiadom księgowość i dodaj dokument do archiwum.
+
+Gdy wykryjesz duży przelew, oznacz transakcję do weryfikacji i powiadom dział AML.

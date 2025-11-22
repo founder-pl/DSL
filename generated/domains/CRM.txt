@@ -1,0 +1,16 @@
+
+Gdy nowy lead zostanie utworzony, przypisz opiekuna i ustaw status „Nowy”.
+
+Gdy klient odpowie na ofertę, zmień status na „W trakcie rozmów” i powiadom sprzedawcę.
+
+Gdy klient nie odpowiada przez 7 dni, wyślij follow-up i oznacz jako „zimny lead”.
+
+Gdy klient złoży zapytanie, utwórz zadanie dla zespołu i ustaw priorytet.
+
+Gdy klient podpisze umowę, zmień status na „Wygrany” i prześlij dokumenty do księgowości.
+
+Gdy klient zgłosi problem, otwórz ticket i przypisz do działu wsparcia.
+
+Gdy klient przekroczy wartość zakupów 10 000 zł, przypisz go do programu VIP i wyślij gratulacje.
+
+Gdy klient anuluje subskrypcję, zapisz powód i uruchom kampanię odzyskania.

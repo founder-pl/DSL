@@ -86,7 +86,7 @@ function guessTarget(actionName){
   return { type: 'generic', method:'POST', path:'/api/mock/action' };
 }
 
-export function buildScaffolds(input){
+export function buildScaffolds(input, baseUrl = ''){
   const workflows = Array.isArray(input) ? input : toWorkflows(input);
   const sanitizer = new TextSanitizer();
   const bash = [];
@@ -96,25 +96,28 @@ export function buildScaffolds(input){
   const actions = new Map();
   workflows.forEach(wf => (wf.actions || []).forEach(a => { const key = sanitizer.sanitizeId(a.name); if (!actions.has(key)) actions.set(key, a.name); }));
 
+  // normalize baseUrl
+  const BASE = String(baseUrl || '').replace(/\/$/, '');
+
   for (const [key, original] of actions){
     const t = guessTarget(original);
     // bash script
     bash.push({
       filename: `generated/scripts/bash/${key}.sh`,
-      content: `#!/usr/bin/env bash\nset -euo pipefail\n# Action: ${original}\n# Target: ${t.path}\n\ncurl -s -S -X ${t.method} 'http://localhost:3000${t.path}' \\\n  -H 'Content-Type: application/json' \\\n  -d '{"action":"${original}","ts":"'"$(date -Iseconds)"'"}' | jq . || true\n`
+      content: `#!/usr/bin/env bash\nset -euo pipefail\n# Action: ${original}\n# Target: ${t.path}\n\ncurl -s -S -X ${t.method} '${BASE || 'http://localhost:3000'}${t.path}' \\\n  -H 'Content-Type: application/json' \\\n  -d '{"action":"${original}","ts":"'"$(date -Iseconds)"'"}' | jq . || true\n`
     });
     // node script
     node.push({
       filename: `generated/scripts/node/${key}.js`,
-      content: `// Auto-generated for action: ${original}\nexport default async function ${key}(ctx={}){\n  const res = await fetch('http://localhost:3000${t.path}', { method:'${t.method}', headers:{'Content-Type':'application/json'}, body: ${t.method==='GET' ? 'undefined' : `JSON.stringify({ action: '${original}', ctx })`} });\n  const data = await res.json().catch(()=>({ ok:false }));\n  return { ok: res.ok, status: res.status, data };\n}\nif (import.meta.url === 'file://' + process.argv[1]){ ${key}().then(r=>console.log(JSON.stringify(r,null,2))); }\n`
+      content: `// Auto-generated for action: ${original}\nexport default async function ${key}(ctx={}){\n  const res = await fetch('${BASE || 'http://localhost:3000'}${t.path}', { method:'${t.method}', headers:{'Content-Type':'application/json'}, body: ${t.method==='GET' ? 'undefined' : `JSON.stringify({ action: '${original}', ctx })`} });\n  const data = await res.json().catch(()=>({ ok:false }));\n  return { ok: res.ok, status: res.status, data };\n}\nif (import.meta.url === 'file://' + process.argv[1]){ ${key}().then(r=>console.log(JSON.stringify(r,null,2))); }\n`
     });
     // python script (no external deps)
     python.push({
       filename: `generated/scripts/python/${key}.py`,
-      content: `# Auto-generated for action: ${original}\nimport json, urllib.request\nreq = urllib.request.Request('http://localhost:3000${t.path}', method='${t.method}')\nreq.add_header('Content-Type','application/json')\nbody = ${t.method==='GET' ? 'None' : `json.dumps({'action': '${original}', 'ctx': {}}).encode('utf-8')`}\ntry:\n    with urllib.request.urlopen(req, data=body) as r:\n        print(r.read().decode('utf-8'))\nexcept Exception as e:\n    print(json.dumps({'ok': False, 'error': str(e)}))\n`
+      content: `# Auto-generated for action: ${original}\nimport json, urllib.request\nreq = urllib.request.Request('${BASE || 'http://localhost:3000'}${t.path}', method='${t.method}')\nreq.add_header('Content-Type','application/json')\nbody = ${t.method==='GET' ? 'None' : `json.dumps({'action': '${original}', 'ctx': {}}).encode('utf-8')`}\ntry:\n    with urllib.request.urlopen(req, data=body) as r:\n        print(r.read().decode('utf-8'))\nexcept Exception as e:\n    print(json.dumps({'ok': False, 'error': str(e)}))\n`
     });
     // browser function
-    browserFns.push(`export async function ${key}(ctx={}){ const res = await fetch('${t.path}', { method:'${t.method}', headers:{'Content-Type':'application/json'}, body: ${t.method==='GET' ? 'undefined' : `JSON.stringify({ action: '${original}', ctx })`} }); return await res.json(); }`);
+    browserFns.push(`export async function ${key}(ctx={}){ const res = await fetch('${BASE || 'http://localhost:3000'}${t.path}', { method:'${t.method}', headers:{'Content-Type':'application/json'}, body: ${t.method==='GET' ? 'undefined' : `JSON.stringify({ action: '${original}', ctx })`} }); return await res.json(); }`);
   }
 
   const browser = [{ filename: 'generated/browser/actions.js', content: `${browserFns.join('\n')}\n` }];

@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>Founder.pl Interaktywny Workflow CQRS + Event Sourcing</title>
+    <link rel="icon" href="data:,">
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
     <script src="advanced-features.js"></script>
@@ -36,6 +37,7 @@ steps:
 <button id="update-btn">Aktualizuj diagram workflow</button>
 <button id="gen-js-btn">⚙️ Generuj JS z YAML</button>
 <a id="gen-js-download" style="display:none; margin-left:10px;">Pobierz JS</a>
+<button id="dedupe-btn" style="margin-left:10px;">🧹 Usuń duplikaty</button>
 
 <h2>Edytor NLP</h2>
 <textarea id="sentence-editor" placeholder="Np. 'Gdy wpłata klienta nastąpi, wystaw fakturę i uruchom kampanię retargetingową.'"></textarea>
@@ -87,6 +89,48 @@ steps:
 <button id="fill-examples-btn">Wstaw przykłady</button>
 <button id="check-duplicates-btn">🔎 Sprawdź duplikaty (DSL)</button>
 <div id="multi-diagrams" style="margin-top:10px;"></div>
+
+<h2>Scenariusze i Skrypty</h2>
+<div style="display:flex; gap:10px; align-items:center; flex-wrap: wrap; margin-bottom: 10px;">
+  <button id="processes-split-btn">📂 Podziel procesy (procesy.txt)</button>
+  <select id="domain-select" style="min-width:200px;"></select>
+  <button id="processes-generate-all-btn">⚙️ Generuj (wszystkie)</button>
+  <button id="processes-generate-domain-btn">⚙️ Generuj (domena)</button>
+  <button id="generated-refresh-btn">🔄 Odśwież listę</button>
+  <span id="domain-status" style="margin-left:10px;"></span>
+ </div>
+<div style="display:flex; gap:20px; flex-wrap: wrap;">
+  <div style="flex:1; min-width:300px;">
+    <h3>Pliki wygenerowane</h3>
+    <pre id="generated-files" style="max-height:220px;"></pre>
+  </div>
+  <div style="flex:1; min-width:300px;">
+    <h3>Uruchom skrypt</h3>
+    <div style="display:flex; gap:10px; align-items:center; flex-wrap: wrap;">
+      <label>Język:</label>
+      <select id="exec-lang">
+        <option value="bash">bash</option>
+        <option value="node">node</option>
+        <option value="python">python</option>
+      </select>
+      <label>Akcja:</label>
+      <select id="exec-action" style="min-width:200px;"></select>
+      <button id="exec-run-btn">▶️ Uruchom</button>
+    </div>
+    <h4>Wyjście</h4>
+    <pre id="exec-output" style="max-height:220px;"></pre>
+  </div>
+  <div style="flex:1; min-width:300px;">
+    <h3>Podgląd domeny</h3>
+    <div style="display:flex; gap:10px; align-items:center; flex-wrap: wrap;">
+      <select id="diagram-domain-select" style="min-width:200px;"></select>
+      <button id="diagram-show-btn">🖼️ Diagram</button>
+      <button id="yaml-show-btn">📄 YAML</button>
+    </div>
+    <div id="domain-diagram" style="margin-top:10px;"></div>
+    <pre id="domain-yaml" style="max-height:200px;"></pre>
+  </div>
+</div>
 
 <script type="module">
     import { TextSanitizer } from "./src/core/sanitizer.js";
@@ -157,7 +201,7 @@ steps:
         }
 
         // Dodaj interaktywność
-        setTimeout(()=>{ // trzeba odczekać na render
+        setTimeout(async ()=>{ // trzeba odczekać na render
             const nodes = div.querySelectorAll('.node');
             nodes.forEach(node=>{
                 node.style.cursor='pointer';
@@ -297,6 +341,114 @@ steps:
             document.getElementById('db-status').textContent = data.exists ? ('Baza OK: '+data.path) : 'Baza nie istnieje';
         }catch(e){ document.getElementById('db-status').textContent = 'Błąd walidacji: '+e.message; }
     });
+
+    // === Scenariusze i Skrypty ===
+    const domainSelect = document.getElementById('domain-select');
+    const diagramDomainSelect = document.getElementById('diagram-domain-select');
+    const domainStatus = document.getElementById('domain-status');
+    const filesPre = document.getElementById('generated-files');
+    const execLang = document.getElementById('exec-lang');
+    const execAction = document.getElementById('exec-action');
+    const execOutput = document.getElementById('exec-output');
+    const domainDiagram = document.getElementById('domain-diagram');
+    const domainYaml = document.getElementById('domain-yaml');
+
+    function setDomains(list){
+        try{
+            domainSelect.innerHTML = '';
+            diagramDomainSelect.innerHTML = '';
+            list.forEach(d => {
+                const o1 = document.createElement('option'); o1.value = d; o1.textContent = d; domainSelect.appendChild(o1);
+                const o2 = document.createElement('option'); o2.value = d; o2.textContent = d; diagramDomainSelect.appendChild(o2);
+            });
+        }catch(_){ }
+    }
+
+    async function splitDomains(){
+        try{
+            domainStatus.textContent = 'Dzielę procesy...';
+            const resp = await fetch('/api/processes/split');
+            const data = await resp.json();
+            if (data.domains){ setDomains(data.domains); }
+            domainStatus.textContent = `Podzielono: ${data.domains?.length||0} domen.`;
+        }catch(e){ domainStatus.textContent = 'Błąd split: '+e.message; }
+    }
+
+    async function generate(domain){
+        try{
+            domainStatus.textContent = 'Generuję artefakty...';
+            const url = domain && domain !== 'all' ? `/api/processes/generate?domain=${encodeURIComponent(domain)}` : '/api/processes/generate?domain=all';
+            const resp = await fetch(url, { method:'POST' });
+            const data = await resp.json();
+            if (!data.success) throw new Error(data.error||'');
+            domainStatus.textContent = `Wygenerowano. Plików: ${data.files?.length||0}, Akcji: ${data.totalActions||0}`;
+            await refreshFiles();
+            await refreshActions();
+        }catch(e){ domainStatus.textContent = 'Błąd generowania: '+e.message; }
+    }
+
+    async function refreshFiles(){
+        try{
+            const resp = await fetch('/api/processes/list');
+            const data = await resp.json();
+            const list = (data.files||[]).map(f=>f.replace(location.origin,'')).sort();
+            filesPre.textContent = list.join('\n');
+        }catch(e){ filesPre.textContent = 'Błąd listy: '+e.message; }
+    }
+
+    async function refreshActions(){
+        try{
+            const resp = await fetch('/api/processes/list');
+            const data = await resp.json();
+            const actions = new Set();
+            (data.files||[]).forEach(f => {
+                const m = f.match(/generated\/scripts\/(?:bash|node|python)\/(.+)\.(?:sh|js|py)$/);
+                if (m) actions.add(m[1]);
+            });
+            execAction.innerHTML = '';
+            Array.from(actions).sort().forEach(a => { const o = document.createElement('option'); o.value = a; o.textContent = a; execAction.appendChild(o); });
+        }catch(_){ }
+    }
+
+    document.getElementById('processes-split-btn').addEventListener('click', splitDomains);
+    document.getElementById('processes-generate-all-btn').addEventListener('click', ()=>generate('all'));
+    document.getElementById('processes-generate-domain-btn').addEventListener('click', ()=>generate(domainSelect.value));
+    document.getElementById('generated-refresh-btn').addEventListener('click', async ()=>{ await refreshFiles(); await refreshActions(); });
+
+    document.getElementById('exec-run-btn').addEventListener('click', async ()=>{
+        try{
+            execOutput.textContent = 'Uruchamiam...';
+            const lang = execLang.value; const action = execAction.value;
+            const resp = await fetch(`/api/exec/${encodeURIComponent(lang)}/${encodeURIComponent(action)}`, { method: 'POST' });
+            const data = await resp.json();
+            execOutput.textContent = JSON.stringify(data, null, 2);
+        }catch(e){ execOutput.textContent = 'Błąd exec: '+e.message; }
+    });
+
+    document.getElementById('diagram-show-btn').addEventListener('click', async ()=>{
+        try{
+            domainYaml.textContent = '';
+            const d = diagramDomainSelect.value;
+            const url = `/generated/diagrams/${encodeURIComponent(d)}.mmd`;
+            const txt = await (await fetch(url)).text();
+            domainDiagram.innerHTML = '';
+            const { svg } = await mermaid.render('dom-'+Date.now(), txt);
+            domainDiagram.innerHTML = svg;
+        }catch(e){ domainDiagram.textContent = 'Błąd diagramu: '+e.message; }
+    });
+
+    document.getElementById('yaml-show-btn').addEventListener('click', async ()=>{
+        try{
+            domainDiagram.innerHTML = '';
+            const d = diagramDomainSelect.value;
+            const url = `/generated/domains/${encodeURIComponent(d)}.yaml`;
+            const txt = await (await fetch(url)).text();
+            domainYaml.textContent = txt;
+        }catch(e){ domainYaml.textContent = 'Błąd YAML: '+e.message; }
+    });
+
+    // bootstrap initial state (bez await)
+    try{ splitDomains().then(()=>refreshFiles()).then(()=>refreshActions()).catch(()=>{}); }catch(_){ }
             }
         }, 100);
     }
@@ -380,6 +532,105 @@ steps:
             try { if (hasStorage()) saveYAML('dsl_yaml', document.getElementById("yaml-editor").value); } catch(_){}
             renderDiagram(workflow);
         }catch(e){ alert("Błąd YAML: "+e.message);}
+    });
+
+    // --- Usuń duplikaty ---
+    document.getElementById('dedupe-btn').addEventListener('click', ()=>{
+        try{
+            const yamlEl = document.getElementById('yaml-editor');
+            const doc = jsyaml.load(yamlEl.value);
+            const norm = (s)=> String(s||'').trim().toLowerCase();
+            const summary = { removedSteps:0, removedWorkflows:0, removedActions:0, mergedActions:0, fixedIds:0 };
+            const ensureActionId = (ownerId, a)=>{ if (!a.id || !String(a.id).trim()){ a.id = sanitizer.sanitizeId(`${ownerId}_action_${a.name||'action'}`); summary.fixedIds++; } return a; };
+
+            if (doc && Array.isArray(doc.steps)){
+                const map = new Map();
+                const newSteps = [];
+                for (const s of doc.steps){
+                    if (!s || typeof s !== 'object') continue;
+                    s.id = s.id && String(s.id).trim() ? s.id : sanitizer.sanitizeId(s.name || 'step');
+                    if (!s.id) { s.id = 'step_'+Date.now(); summary.fixedIds++; }
+                    const key = norm(s.id);
+                    if (!map.has(key)){
+                        const seen = new Map();
+                        const uniq = [];
+                        (s.actions||[]).forEach(a=>{
+                            const k = norm(a?.id || a?.name);
+                            if (!k) return;
+                            if (!seen.has(k)){
+                                ensureActionId(s.id, a);
+                                seen.set(k,true); uniq.push(a);
+                            } else { summary.removedActions++; }
+                        });
+                        s.actions = uniq;
+                        map.set(key, s); newSteps.push(s);
+                    } else {
+                        // merge actions
+                        const existing = map.get(key);
+                        const seen = new Map((existing.actions||[]).map(a=>[norm(a.id||a.name),true]));
+                        (s.actions||[]).forEach(a=>{
+                            const k = norm(a?.id || a?.name);
+                            if (!k) return;
+                            if (!seen.has(k)){
+                                ensureActionId(existing.id, a);
+                                existing.actions.push(a);
+                                seen.set(k,true); summary.mergedActions++;
+                            } else { summary.removedActions++; }
+                        });
+                        summary.removedSteps++;
+                    }
+                }
+                doc.steps = newSteps;
+            } else {
+                let workflows = Array.isArray(doc?.workflows) ? doc.workflows
+                                : (Array.isArray(doc?.workflow?.workflows) ? doc.workflow.workflows : null);
+                if (!workflows){
+                    alert('Brak sekcji steps ani workflow.workflows do deduplikacji');
+                    return;
+                }
+                const map = new Map();
+                const unique = [];
+                for (const wf of workflows){
+                    if (!wf || typeof wf !== 'object') continue;
+                    wf.id = wf.id && String(wf.id).trim() ? wf.id : sanitizer.sanitizeId(wf.name || 'workflow');
+                    const key = norm(wf.id);
+                    if (!map.has(key)){
+                        const seen = new Map(); const uniq = [];
+                        (wf.actions||[]).forEach(a=>{
+                            const k = norm(a?.id || a?.name);
+                            if (!k) return;
+                            if (!seen.has(k)){
+                                ensureActionId(wf.id, a);
+                                seen.set(k,true); uniq.push(a);
+                            } else { summary.removedActions++; }
+                        });
+                        wf.actions = uniq;
+                        unique.push(wf); map.set(key, wf);
+                    } else {
+                        const existing = map.get(key);
+                        const seen = new Map((existing.actions||[]).map(a=>[norm(a.id||a.name),true]));
+                        (wf.actions||[]).forEach(a=>{
+                            const k = norm(a?.id || a?.name);
+                            if (!k) return;
+                            if (!seen.has(k)){
+                                ensureActionId(existing.id, a);
+                                existing.actions.push(a);
+                                seen.set(k,true); summary.mergedActions++;
+                            } else { summary.removedActions++; }
+                        });
+                        summary.removedWorkflows++;
+                    }
+                }
+                if (Array.isArray(doc.workflows)) doc.workflows = unique;
+                else { doc.workflow = doc.workflow || {}; doc.workflow.workflows = unique; }
+            }
+
+            const newYaml = jsyaml.dump(doc);
+            document.getElementById('yaml-editor').value = newYaml;
+            try { if (hasStorage()) saveYAML('dsl_yaml', newYaml); } catch(_){}
+            try { const wf = jsyaml.load(newYaml); if (wf?.steps) renderDiagram(wf); } catch(_){}
+            alert(`Usunięto duplikaty. Kroki -${summary.removedSteps}, Workflows -${summary.removedWorkflows}, Akcje -${summary.removedActions}, Scalono akcji +${summary.mergedActions}, Uzupełniono ID +${summary.fixedIds}`);
+        }catch(e){ alert('Błąd deduplikacji: '+e.message); }
     });
 
     // --- Renderowanie diagramu CQRS ---

@@ -730,7 +730,7 @@ class DSLServer {
         // Generate DSL, diagrams, scaffolds for a domain or all
         router.post('/generate', async (req, res) => {
             try{
-                const { domain = 'all' } = req.query || {};
+                const { domain = 'all', baseUrl = '' } = req.query || {};
                 const buckets = splitDomains(fs.readFileSync(processesPath, 'utf-8'));
                 const selected = domain === 'all' ? Array.from(buckets.keys()) : [domain];
                 const files = [];
@@ -761,7 +761,7 @@ class DSLServer {
                     const mmd = generateMermaid({ steps });
                     const dfile = join(diagramDir, `${key}.mmd`); writeFile(dfile, mmd); files.push(dfile);
                     // Build scaffolds
-                    const scaff = buildScaffolds({ workflows });
+                    const scaff = buildScaffolds({ workflows }, String(baseUrl||''));
                     totalActions += scaff.count;
                     const writeScaff = (arr)=>{ for (const f of arr){ const full = join(projectRoot, f.filename); ensureDir(dirname(full)); writeFile(full, f.content); try{ if (full.endsWith('.sh')) fs.chmodSync(full, 0o755); }catch(_){} files.push(full); } };
                     writeScaff(scaff.bash); writeScaff(scaff.node); writeScaff(scaff.browser);
@@ -779,6 +779,20 @@ class DSLServer {
                 const walk = (p)=>{ let out=[]; if (!fs.existsSync(p)) return out; for (const n of fs.readdirSync(p)){ const fp = join(p,n); const st = fs.statSync(fp); if (st.isDirectory()) out=out.concat(walk(fp)); else out.push(fp); } return out; };
                 res.json({ files: walk(base) });
             }catch(e){ res.status(400).json({ error:'list failed', message:e.message }); }
+        });
+
+        // Archive generated as tar.gz
+        router.get('/archive', (req, res) => {
+            try{
+                const genDir = join(projectRoot, 'generated');
+                if (!fs.existsSync(genDir)) return res.status(404).json({ error: 'nothing generated' });
+                res.setHeader('Content-Type', 'application/gzip');
+                res.setHeader('Content-Disposition', 'attachment; filename="generated.tar.gz"');
+                const p = spawn('tar', ['-czf', '-', '.'], { cwd: genDir });
+                p.stdout.pipe(res);
+                p.stderr.on('data', d => console.error('tar:', d.toString()));
+                p.on('error', err => res.status(500).end(String(err)));
+            }catch(e){ res.status(500).json({ error: 'archive failed', message: e.message }); }
         });
 
         this.app.use('/api/processes', router);

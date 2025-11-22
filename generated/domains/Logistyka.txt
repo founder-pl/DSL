@@ -1,0 +1,16 @@
+
+Gdy dostawa dotrze do magazynu, przeprowadź przyjęcie i zaktualizuj stany.
+
+Gdy produkt zostanie wyczerpany, wyślij zamówienie do dostawcy i powiadom dział zakupów.
+
+Gdy produkt zostanie uszkodzony, oznacz go jako nienadający się i zgłoś reklamację.
+
+Gdy przesyłka zostanie nadana, zaktualizuj system i wyślij tracking klientowi.
+
+Gdy wykryjesz błąd inwentaryzacji, uruchom proces wyjaśniający i powiadom kierownika.
+
+Gdy zbliża się termin ważności produktu, oznacz go i powiadom o konieczności rotacji.
+
+Gdy dostawa jest opóźniona, powiadom dostawcę i zaktualizuj termin realizacji.
+
+Gdy zamówienie hurtowe zostanie potwierdzone, przygotuj paletę i zarezerwuj transport.
