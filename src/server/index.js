@@ -11,6 +11,10 @@ import { TextSanitizer } from '../core/sanitizer.js';
 import { ModuleMapper } from '../core/module-mapper.js';
 import { generateMermaid } from '../core/diagram.js';
 import { parseMultipleSentences } from '../core/nlp.js';
+import { exportWorkflowToJSON, exportWorkflowToYAML, importWorkflowFromJSON, importWorkflowFromYAML } from '../core/serializer.js';
+import { projectOverview, projectTimeline, projectWorkflowStatuses } from '../core/projections.js';
+import { suggestModulesForText, analyzeSentenceAndSuggest } from '../core/suggestions.js';
+import { HistoryManager } from '../core/history.js';
 import { initSchema, saveWorkflow, saveEvent, saveWebhook, exportDatabase, importDatabase, getDBPath } from './db.js';
 import fs from 'fs';
 
@@ -28,6 +32,7 @@ class DSLServer {
         
         this.setupMiddleware();
         initSchema();
+        this.history = new HistoryManager();
         this.setupRoutes();
         this.setupErrorHandling();
     }
@@ -110,6 +115,8 @@ class DSLServer {
                 if (workflowEvent?.payload) {
                     await saveWorkflow(workflowEvent.payload);
                 }
+                // snapshot history
+                this.history.snapshot(this.engine.exportState());
                 res.json({
                     success: true,
                     result,
@@ -149,6 +156,8 @@ class DSLServer {
                         results.push({ sentence: s, success: false, error: e.message });
                     }
                 }
+                // snapshot history
+                this.history.snapshot(this.engine.exportState());
                 res.json({ processed: results.length, results });
             } catch (error) {
                 res.status(400).json({ error: 'Batch NLP failed', message: error.message });
@@ -170,6 +179,8 @@ class DSLServer {
                 // persist last action event
                 const actEvent = this.engine.getEventsByType('ActionExecuted').slice(-1)[0];
                 if (actEvent) await saveEvent(actEvent);
+                // snapshot history
+                this.history.snapshot(this.engine.exportState());
                 res.json({
                     success: true,
                     result,
@@ -246,6 +257,19 @@ class DSLServer {
             }
         });
         
+        // Persist conditions
+        router.post('/conditions', async (req, res) => {
+            try {
+                const { conditions = [] } = req.body || {};
+                if (!Array.isArray(conditions)) return res.status(400).json({ error: 'conditions must be an array' });
+                const { saveConditions } = await import('./db.js');
+                const saved = await saveConditions(conditions);
+                res.json({ success: true, count: saved.length, saved });
+            } catch (e) {
+                res.status(400).json({ error: 'Save conditions failed', message: e.message });
+            }
+        });
+
         // Clear data (for testing)
         router.delete('/clear', (req, res) => {
             this.engine.clear();
@@ -379,6 +403,71 @@ class DSLServer {
         
         this.app.use('/api/utils', router);
 
+        // Serializer routes
+        const serRouter = express.Router();
+        serRouter.get('/export', (req, res) => {
+            const { format = 'json' } = req.query;
+            const workflows = this.engine.getEventsByType('WorkflowCreated').map(e => e.payload);
+            try {
+                if (String(format).toLowerCase() === 'yaml') {
+                    const y = exportWorkflowToYAML({ workflows });
+                    res.setHeader('Content-Type', 'text/yaml');
+                    return res.send(y);
+                }
+                const j = exportWorkflowToJSON({ workflows });
+                res.setHeader('Content-Type', 'application/json');
+                return res.send(j);
+            } catch (e) {
+                return res.status(400).json({ error: 'Export failed', message: e.message });
+            }
+        });
+        serRouter.post('/import', async (req, res) => {
+            const { format = 'json', data } = req.body || {};
+            if (!data) return res.status(400).json({ error: 'Missing data' });
+            try {
+                let obj;
+                if (String(format).toLowerCase() === 'yaml') obj = importWorkflowFromYAML(String(data));
+                else obj = importWorkflowFromJSON(String(data));
+                const workflows = Array.isArray(obj.workflows) ? obj.workflows : (Array.isArray(obj) ? obj : [obj]);
+                for (const wf of workflows) {
+                    await saveWorkflow(wf);
+                }
+                // snapshot history
+                this.history.snapshot(this.engine.exportState());
+                res.json({ success: true, count: workflows.length });
+            } catch (e) {
+                res.status(400).json({ error: 'Import failed', message: e.message });
+            }
+        });
+        this.app.use('/api/serializer', serRouter);
+
+        // Projections routes
+        const projRouter = express.Router();
+        projRouter.get('/overview', (req, res) => {
+            res.json(projectOverview(this.engine.eventStore, this.engine.getReadModel()));
+        });
+        projRouter.get('/timeline', (req, res) => {
+            res.json(projectTimeline(this.engine.eventStore));
+        });
+        projRouter.get('/workflows', (req, res) => {
+            res.json(projectWorkflowStatuses(this.engine.getReadModel()));
+        });
+        this.app.use('/api/projections', projRouter);
+
+        // Suggestions routes
+        const sugRouter = express.Router();
+        sugRouter.post('/modules', (req, res) => {
+            const { text } = req.body || {};
+            if (!text) return res.status(400).json({ error: 'text required' });
+            res.json({ suggestions: suggestModulesForText(text) });
+        });
+        sugRouter.post('/sentence', (req, res) => {
+            const { sentence } = req.body || {};
+            if (!sentence) return res.status(400).json({ error: 'sentence required' });
+            res.json(analyzeSentenceAndSuggest(sentence));
+        });
+        this.app.use('/api/suggestions', sugRouter);
+
         // Database routes
         const dbRouter = express.Router();
         // Download DB
@@ -491,6 +580,29 @@ class DSLServer {
         });
         
         this.app.use('/api/test', router);
+
+        // History routes
+        const histRouter = express.Router();
+        histRouter.post('/snapshot', (req, res) => {
+            const snap = this.history.snapshot(this.engine.exportState());
+            res.json({ success: true, size: this.history.stack.length });
+        });
+        histRouter.post('/undo', (req, res) => {
+            const prev = this.history.undo();
+            if (!prev) return res.status(400).json({ error: 'Nothing to undo' });
+            this.engine.importState(prev);
+            res.json({ success: true });
+        });
+        histRouter.post('/redo', (req, res) => {
+            const next = this.history.redo();
+            if (!next) return res.status(400).json({ error: 'Nothing to redo' });
+            this.engine.importState(next);
+            res.json({ success: true });
+        });
+        histRouter.get('/current', (req, res) => {
+            res.json({ state: this.history.current() });
+        });
+        this.app.use('/api/history', histRouter);
         
         // Webhooks route (persist)
         const webhooksRouter = express.Router();

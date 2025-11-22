@@ -15,8 +15,37 @@ if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
 let dbInstance = null;
 
+function hasValidSqliteHeader(filePath) {
+  try {
+    if (!fs.existsSync(filePath)) return true; // no file yet -> ok
+    const stat = fs.statSync(filePath);
+    if (stat.size === 0) return true; // empty -> will be created
+    const fd = fs.openSync(filePath, 'r');
+    const buf = Buffer.alloc(16);
+    fs.readSync(fd, buf, 0, 16, 0);
+    fs.closeSync(fd);
+    return buf.toString('utf8', 0, 16) === 'SQLite format 3\0';
+  } catch (_) {
+    return false;
+  }
+}
+
+function backupCorrupt(filePath) {
+  try {
+    if (fs.existsSync(filePath)) {
+      const backup = filePath + '.corrupt.' + Date.now();
+      fs.copyFileSync(filePath, backup);
+      fs.unlinkSync(filePath);
+    }
+  } catch (_) {}
+}
+
 export function getDB() {
   if (dbInstance) return dbInstance;
+  // Validate header before opening
+  if (!hasValidSqliteHeader(DB_PATH)) {
+    backupCorrupt(DB_PATH);
+  }
   dbInstance = new sqlite3.Database(DB_PATH);
   return dbInstance;
 }
@@ -152,15 +181,29 @@ export function exportDatabase() {
 }
 
 export function importDatabase(buffer) {
+  // Validate header of incoming buffer
+  const header = buffer.subarray(0, 16).toString('utf8');
+  if (header !== 'SQLite format 3\0') {
+    throw new Error('Uploaded file is not a valid SQLite database');
+  }
   // Backup current DB
   if (fs.existsSync(DB_PATH)) {
     const backup = DB_PATH + '.' + Date.now() + '.bak';
     fs.copyFileSync(DB_PATH, backup);
   }
   fs.writeFileSync(DB_PATH, buffer);
-  // Try open DB to validate
-  const test = new sqlite3.Database(DB_PATH);
-  test.close();
+  // Validate by opening
+  try {
+    const test = new sqlite3.Database(DB_PATH);
+    // simple pragma
+    test.get('PRAGMA user_version;', (err) => { /* ignore */ });
+    test.close();
+  } catch (e) {
+    backupCorrupt(DB_PATH);
+    throw e;
+  }
+  // Reset singleton to ensure new handle uses new file
+  dbInstance = null;
   return true;
 }
 

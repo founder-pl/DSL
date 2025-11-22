@@ -82,6 +82,7 @@ steps:
 <h2>Przetwarzanie wielu zdań (NLP batch)</h2>
 <textarea id="multi-sentences-editor" placeholder="Wklej wiele zdań, każde w nowej linii lub oddzielone kropką"></textarea>
 <button id="process-multi-btn">Przetwórz wiele zdań</button>
+<div id="multi-diagrams" style="margin-top:10px;"></div>
 
 <script type="module">
     import { TextSanitizer } from "./src/core/sanitizer.js";
@@ -150,15 +151,99 @@ steps:
                     if(actionName) sendCommand(actionName);
                 }
             });
+
+    // --- NLP batch z wielu zdań ---
+    document.getElementById('process-multi-btn').addEventListener('click', async ()=>{
+        const text = document.getElementById('multi-sentences-editor').value || '';
+        const sentences = parseMultipleSentences(text);
+        const container = document.getElementById('multi-diagrams');
+        container.innerHTML = '';
+        if (!sentences.length){
+            container.textContent = 'Brak poprawnych zdań w formacie: "Gdy ..., ..."';
+            return;
+        }
+        try{
+            const resp = await fetch('/api/workflow/nlp/batch', {
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ text })
+            });
+            const data = await resp.json();
+            (data.results || []).forEach((r, idx) => {
+                const div = document.createElement('div');
+                div.className = 'mermaid';
+                div.style.marginTop = '10px';
+                div.textContent = r.success ? r.diagram : `flowchart TD\nError["${r.error}"]`;
+                container.appendChild(div);
+                // Also log actions
+                if (r.success && Array.isArray(r.workflow?.actions)){
+                    r.workflow.actions.forEach(a => updateLog({ timestamp: new Date().toISOString(), actionName: a.name }));
+                }
+            });
+            // Render all mermaid blocks in container
+            mermaid.init(undefined, container);
+        }catch(e){
+            container.textContent = 'Błąd przetwarzania: ' + e.message;
+        }
+    });
+
+    // --- DB: Download/upload/validate ---
+    document.getElementById('db-download-btn').addEventListener('click', async ()=>{
+        try{
+            const resp = await fetch('/api/db/download');
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            const blob = await resp.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = 'dsl.sqlite';
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }catch(e){
+            document.getElementById('db-status').textContent = 'Błąd pobierania: '+e.message;
+        }
+    });
+
+    document.getElementById('db-upload-btn').addEventListener('click', async ()=>{
+        const input = document.getElementById('db-upload-input');
+        const file = input.files && input.files[0];
+        if (!file){ document.getElementById('db-status').textContent = 'Wybierz plik .sqlite'; return; }
+        const reader = new FileReader();
+        reader.onload = async () => {
+            try{
+                const base64 = reader.result.split(',')[1] || '';
+                const resp = await fetch('/api/db/upload', {
+                    method: 'POST', headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({ data: base64 })
+                });
+                const data = await resp.json();
+                document.getElementById('db-status').textContent = data.success ? 'Wgrano bazę.' : ('Błąd wgrywania: '+(data.error||''));
+            }catch(e){ document.getElementById('db-status').textContent = 'Błąd wgrywania: '+e.message; }
+        };
+        reader.readAsDataURL(file);
+    });
+
+    document.getElementById('db-validate-btn').addEventListener('click', async ()=>{
+        try{
+            const resp = await fetch('/api/db/validate');
+            const data = await resp.json();
+            document.getElementById('db-status').textContent = data.exists ? ('Baza OK: '+data.path) : 'Baza nie istnieje';
+        }catch(e){ document.getElementById('db-status').textContent = 'Błąd walidacji: '+e.message; }
+    });
         }, 100);
     }
 
     // --- Command Handler ---
-    function sendCommand(actionName){
+    async function sendCommand(actionName){
         const event = eventCore.recordAction(actionName);
         updateLog(event);
         // persist state if available
         try { if (hasStorage()) saveState('dsl_state', eventCore.toState()); } catch(_){}
+        // try persist in DB via API (non-blocking)
+        try {
+            fetch('/api/workflow/action', {
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ actionName })
+            });
+        } catch(_){ }
         return event;
     }
     window.sendCommand = sendCommand;
@@ -177,19 +262,44 @@ steps:
     }
 
     // --- NLP parser zdań ---
-    document.getElementById("sentence-btn").addEventListener("click",()=>{
+    document.getElementById("sentence-btn").addEventListener("click",async ()=>{
+        const sentence = document.getElementById("sentence-editor").value;
+        if(!sentence) return;
+        // Try server persistence first
         try{
-            const sentence = document.getElementById("sentence-editor").value;
-            if(!sentence) return;
-            const parsed = parseSentence(sentence);
-            const step = buildStep(parsed.condition, parsed.actions, sanitizer, mapper);
+            const resp = await fetch('/api/workflow/nlp', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sentence })
+            });
+            if (!resp.ok) throw new Error('HTTP '+resp.status);
+            const data = await resp.json();
+            const wfEvent = data.workflow;
+            if (!wfEvent || !wfEvent.payload) throw new Error('Brak workflow payload');
+            const payload = wfEvent.payload;
             const workflow = jsyaml.load(document.getElementById("yaml-editor").value);
-            workflow.steps.push(step);
+            workflow.steps.push({
+                id: payload.id,
+                name: payload.name,
+                module: payload.module,
+                actions: payload.actions
+            });
             document.getElementById("yaml-editor").value = jsyaml.dump(workflow);
             renderDiagram(workflow);
-            step.actions.forEach(a=>sendCommand(a.name));
+            payload.actions.forEach(a=>sendCommand(a.name));
             document.getElementById("sentence-editor").value="";
-        }catch(e){ alert("Błąd: "+e.message); }
+        }catch(err){
+            // Fallback to local processing
+            try{
+                const parsed = parseSentence(sentence);
+                const step = buildStep(parsed.condition, parsed.actions, sanitizer, mapper);
+                const workflow = jsyaml.load(document.getElementById("yaml-editor").value);
+                workflow.steps.push(step);
+                document.getElementById("yaml-editor").value = jsyaml.dump(workflow);
+                renderDiagram(workflow);
+                step.actions.forEach(a=>sendCommand(a.name));
+                document.getElementById("sentence-editor").value="";
+            }catch(e){ alert("Błąd: "+e.message); }
+        }
     });
 
     // --- Aktualizacja workflow z YAML ---

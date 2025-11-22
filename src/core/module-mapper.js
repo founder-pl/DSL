@@ -72,24 +72,17 @@ export class ModuleMapper {
         if (typeof text !== 'string' || text.trim().length === 0) {
             return 'Default';
         }
-        
         const textLower = text.toLowerCase();
-        
-        // First try exact keyword match (faster)
-        for (const [keyword, module] of Object.entries(this.keywordToModule)) {
-            if (textLower.includes(keyword)) {
-                return module;
-            }
-        }
-        
-        // Fallback to original method for partial matches
+        let bestModule = 'Default';
+        let bestScore = 0;
         for (const [module, keywords] of Object.entries(this.moduleMap)) {
-            if (keywords.some(keyword => textLower.includes(keyword))) {
-                return module;
+            const score = keywords.reduce((acc, kw) => acc + (textLower.includes(kw.toLowerCase()) ? 1 : 0), 0);
+            if (score > bestScore) {
+                bestScore = score;
+                bestModule = module;
             }
         }
-        
-        return 'Default';
+        return bestModule;
     }
 
     /**
