@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <title>DSL Manager – Edytor procesów</title>
+  <link rel="icon" href="data:,">
+  <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    h1 { margin-top: 0; }
+    .toolbar { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px; }
+    textarea { width:100%; height:140px; font-family: monospace; }
+    table { border-collapse: collapse; width:100%; }
+    th, td { border:1px solid #ddd; padding:6px; vertical-align: top; }
+    th { background:#f5f5f5; }
+    .actions-list > div { display:flex; gap:6px; align-items:center; margin-bottom:6px; }
+    .small { font-size: 12px; color:#666; }
+    .two { display:grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .status { margin-left: 8px; color: #555; }
+    .btn { padding:6px 10px; }
+    input[type="text"] { width: 140px; }
+    .id { width:140px; }
+    .name { width:220px; }
+    .module { width:160px; }
+  </style>
+</head>
+<body>
+  <h1>Manager procesów (DSL)</h1>
+  <div class="toolbar">
+    <button id="load-db" class="btn">⬇️ Wczytaj z bazy (SQLite)</button>
+    <button id="load-domains" class="btn">📂 Wczytaj wszystkie domeny (generated/domains/*.yaml)</button>
+    <button id="apply-yaml" class="btn">📥 Zastosuj YAML (z pola niżej)</button>
+    <button id="dedupe" class="btn">🧹 Usuń duplikaty</button>
+    <button id="save-api" class="btn">⬆️ Zapisz do API</button>
+    <button id="download-yaml" class="btn">💾 Pobierz YAML</button>
+    <span id="status" class="status"></span>
+  </div>
+
+  <div class="two">
+    <div>
+      <h3>Edytor tabeli</h3>
+      <table id="workflowTable">
+        <thead>
+          <tr>
+            <th>Step ID</th>
+            <th>Step Name</th>
+            <th>Module</th>
+            <th>Actions</th>
+            <th>Opcje</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <button id="add-step" class="btn">➕ Dodaj nowy krok</button>
+    </div>
+    <div>
+      <h3>DSL (YAML)</h3>
+      <textarea id="yaml"></textarea>
+      <div class="small">Ten YAML jest regenerowany po każdej zmianie w tabeli.</div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { TextSanitizer } from './src/core/sanitizer.js';
+    import { ModuleMapper } from './src/core/module-mapper.js';
+    import { validateWorkflow as validateWF } from './src/core/validator.js';
+
+    const sanitizer = new TextSanitizer();
+    const mapper = new ModuleMapper();
+
+    // Stan wewnętrzny edytora – kroki/akcje
+    let state = {
+      workflow: 'Zarządzane procesy',
+      steps: []
+    };
+
+    // Elementy
+    const tableBody = document.querySelector('#workflowTable tbody');
+    const yamlEl = document.getElementById('yaml');
+    const statusEl = document.getElementById('status');
+
+    // Render tabeli
+    function renderTable(){
+      tableBody.innerHTML = '';
+      state.steps.forEach((step, stepIndex) => {
+        const tr = document.createElement('tr');
+        const actionsHTML = (step.actions || []).map((a, actionIndex) => `
+          <div class="actions-list">
+            <div>
+              <input class="id" type="text" value="${escapeHtml(a.id||'')}" placeholder="action id" onchange="window.__updateAction(${stepIndex}, ${actionIndex}, 'id', this.value)" />
+              <input class="name" type="text" value="${escapeHtml(a.name||'')}" placeholder="action name" onchange="window.__updateAction(${stepIndex}, ${actionIndex}, 'name', this.value)" />
+              <input class="module" type="text" value="${escapeHtml(a.module||'')}" placeholder="module" onchange="window.__updateAction(${stepIndex}, ${actionIndex}, 'module', this.value)" />
+              <button onclick="window.__removeAction(${stepIndex}, ${actionIndex})">Usuń</button>
+            </div>
+          </div>
+        `).join('');
+
+        tr.innerHTML = `
+          <td>
+            <input class="id" type="text" value="${escapeHtml(step.id||'')}" onchange="window.__updateStep(${stepIndex}, 'id', this.value)" />
+          </td>
+          <td>
+            <input class="name" type="text" value="${escapeHtml(step.name||'')}" onchange="window.__updateStep(${stepIndex}, 'name', this.value)" />
+          </td>
+          <td>
+            <input class="module" type="text" value="${escapeHtml(step.module||'')}" onchange="window.__updateStep(${stepIndex}, 'module', this.value)" />
+          </td>
+          <td>
+            ${actionsHTML}
+            <button onclick="window.__addAction(${stepIndex})">+ Dodaj akcję</button>
+          </td>
+          <td>
+            <button onclick="window.__removeStep(${stepIndex})">Usuń krok</button>
+          </td>
+        `;
+        tableBody.appendChild(tr);
+      });
+      regenerateYAML();
+    }
+
+    // Funkcje aktualizacji (eksponujemy na window dla prostoty handlerów inline)
+    window.__updateStep = (stepIndex, field, value) => {
+      if (field === 'id') value = safeId(value);
+      state.steps[stepIndex][field] = value;
+      regenerateYAML();
+    };
+
+    window.__updateAction = (stepIndex, actionIndex, field, value) => {
+      if (field === 'id') value = safeId(value);
+      state.steps[stepIndex].actions[actionIndex][field] = value;
+      regenerateYAML();
+    };
+
+    window.__addAction = (stepIndex) => {
+      const st = state.steps[stepIndex];
+      const base = safeId((st?.id)||'step') || `step_${Date.now()}`;
+      const next = (st.actions||[]).length + 1;
+      (st.actions = st.actions || []).push({ id: `${base}_action_${next}`, name: 'Nowa akcja', module: guessModule('Nowa akcja') });
+      renderTable();
+    };
+
+    window.__removeAction = (stepIndex, actionIndex) => {
+      state.steps[stepIndex].actions.splice(actionIndex, 1);
+      renderTable();
+    };
+
+    document.getElementById('add-step').addEventListener('click', () => {
+      const id = `step_${Date.now()}`;
+      state.steps.push({ id, name: 'Nowy krok', module: 'Default', actions: [] });
+      renderTable();
+    });
+
+    window.__removeStep = (stepIndex) => {
+      state.steps.splice(stepIndex, 1);
+      renderTable();
+    };
+
+    // YAML regeneracja
+    function regenerateYAML(){
+      try{
+        const dsl = { workflow: state.workflow, steps: state.steps };
+        yamlEl.value = jsyaml.dump(dsl);
+        status('Zaktualizowano DSL');
+      }catch(e){ status('Błąd generowania YAML: '+e.message); }
+    }
+
+    // Import z YAML w polu
+    document.getElementById('apply-yaml').addEventListener('click', () => {
+      try{
+        const doc = jsyaml.load(yamlEl.value);
+        applyAnyShape(doc);
+        renderTable();
+        status('Zastosowano YAML z pola');
+      }catch(e){ status('Błąd parsowania YAML: '+e.message); }
+    });
+
+    // Wczytaj bezpośrednio z bazy danych (SQLite)
+    async function loadDb(){
+      try{
+        const r = await fetch('/api/workflow/db/workflows');
+        const data = await r.json();
+        const workflows = Array.isArray(data?.workflows) ? data.workflows : [];
+        applyWorkflowsArray(workflows);
+        renderTable();
+        status(`Wczytano z bazy (workflows=${workflows.length})`);
+      }catch(e){ status('Błąd pobierania z bazy: '+e.message); }
+    }
+    document.getElementById('load-db').addEventListener('click', loadDb);
+
+    // Wczytaj wszystkie domeny (generated/domains/*.yaml)
+    document.getElementById('load-domains').addEventListener('click', async () => {
+      try{
+        const list = await (await fetch('/api/processes/list')).json();
+        const domainFiles = (list.files||[]).filter(f => /generated\/domains\/.+\.yaml$/i.test(f));
+        if (!domainFiles.length){ status('Brak plików domen YAML'); return; }
+        const allSteps = [];
+        for (const path of domainFiles){
+          try{
+            const txt = await (await fetch(path.replace(location.origin,''))).text();
+            const obj = jsyaml.load(txt);
+            const s = extractSteps(obj);
+            allSteps.push(...s);
+          }catch(_){ }
+        }
+        state.steps = dedupeSteps(allSteps);
+        renderTable();
+        status(`Wczytano ${domainFiles.length} domen – scalono kroki: ${state.steps.length}`);
+      }catch(e){ status('Błąd ładowania domen: '+e.message); }
+    });
+
+    // Deduplikacja
+    document.getElementById('dedupe').addEventListener('click', () => {
+      state.steps = dedupeSteps(state.steps);
+      renderTable();
+      status('Wykonano deduplikację');
+    });
+
+    // Zapis do API
+    document.getElementById('save-api').addEventListener('click', async () => {
+      try{
+        // Konwertuj kroki -> workflows (każdy step jako workflow payload)
+        const workflows = (state.steps||[]).map(s => ({ id: s.id, name: s.name, module: s.module, actions: s.actions||[] }));
+        const payload = JSON.stringify({ workflows });
+        const r = await fetch('/api/serializer/import', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ format:'json', data: payload }) });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error||'import failed');
+        status(`Zapisano do API (count=${data.count})`);
+      }catch(e){ status('Błąd zapisu: '+e.message); }
+    });
+
+    // Pobieranie YAML
+    document.getElementById('download-yaml').addEventListener('click', () => {
+      const blob = new Blob([yamlEl.value], { type:'text/yaml' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'workflow-manager.yaml'; a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    // Pomocnicze
+    function safeId(v){ return (sanitizer.sanitizeId(String(v||'')) || `id_${Date.now()}`); }
+    function guessModule(text){ return mapper.getModuleForKeywords(String(text||'')); }
+    function status(msg){ statusEl.textContent = msg; setTimeout(()=>{ if (statusEl.textContent === msg) statusEl.textContent=''; }, 4000); }
+
+    function extractSteps(obj){
+      // Wspiera {steps:[]} lub {workflow:{workflows:[]}} lub {workflows:[]}
+      if (Array.isArray(obj?.steps)) return obj.steps.map(normalizeStep);
+      const w = Array.isArray(obj?.workflows) ? obj.workflows : (Array.isArray(obj?.workflow?.workflows) ? obj.workflow.workflows : []);
+      return w.map(normalizeStep);
+    }
+    function applyWorkflowsArray(arr){
+      state.steps = (arr||[]).map(w => normalizeStep({ id:w.id, name:w.name, module:w.module, actions:w.actions||[] }));
+    }
+    function normalizeStep(s){
+      return {
+        id: s.id || safeId(s.name||'step'),
+        name: s.name || 'krok',
+        module: s.module || 'Default',
+        actions: (s.actions||[]).map(a => ({ id: a.id || safeId(`${s.id||'step'}_action_${a.name||'a'}`), name: a.name||'akcja', module: a.module||guessModule(a.name) }))
+      };
+    }
+
+    function dedupeSteps(steps){
+      const norm = (v)=> String(v||'').trim().toLowerCase();
+      const map = new Map();
+      for (const s of steps){
+        const key = norm(s.id||s.name);
+        if (!map.has(key)){
+          const seen = new Set();
+          const uniq = [];
+          (s.actions||[]).forEach(a => { const ka = norm(a.id||a.name); if (!seen.has(ka)){ seen.add(ka); uniq.push(a); } });
+          map.set(key, { ...s, actions: uniq });
+        } else {
+          const ex = map.get(key);
+          const seen = new Set((ex.actions||[]).map(a => norm(a.id||a.name)));
+          (s.actions||[]).forEach(a => { const ka = norm(a.id||a.name); if (!seen.has(ka)){ seen.add(ka); ex.actions.push(a); } });
+        }
+      }
+      return Array.from(map.values());
+    }
+
+    function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c])); }
+
+    // Inicjalizacja – spróbuj od razu wczytać z DB
+    yamlEl.value = jsyaml.dump({ workflow: state.workflow, steps: state.steps });
+    loadDb().catch(()=>{});
+  </script>
+  
+</body>
+</html>

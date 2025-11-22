@@ -15,7 +15,7 @@ import { exportWorkflowToJSON, exportWorkflowToYAML, importWorkflowFromJSON, imp
 import { projectOverview, projectTimeline, projectWorkflowStatuses } from '../core/projections.js';
 import { suggestModulesForText, analyzeSentenceAndSuggest } from '../core/suggestions.js';
 import { HistoryManager } from '../core/history.js';
-import { initSchema, saveWorkflow, saveEvent, saveWebhook, exportDatabase, importDatabase, getDBPath } from './db.js';
+import { initSchema, saveWorkflow, saveEvent, saveWebhook, exportDatabase, importDatabase, getDBPath, getAllWorkflows } from './db.js';
 import fs from 'fs';
 import { spawn } from 'child_process';
 import { findDuplicateWorkflows } from '../core/validator.js';
@@ -258,6 +258,16 @@ class DSLServer {
                 workflows: workflows.map(event => event.payload),
                 count: workflows.length
             });
+        });
+
+        // Get workflows directly from DB (current state)
+        router.get('/db/workflows', async (req, res) => {
+            try{
+                const workflows = await getAllWorkflows();
+                res.json({ workflows, count: workflows.length });
+            }catch(e){
+                res.status(500).json({ error: 'DB read failed', message: e.message });
+            }
         });
 
         // Find duplicate workflows by id
@@ -822,7 +832,7 @@ class DSLServer {
         router.get('/list', (req, res) => {
             try{
                 const base = join(projectRoot, 'generated');
-                const walk = (p)=>{ let out=[]; if (!fs.existsSync(p)) return out; for (const n of fs.readdirSync(p)){ const fp = join(p,n); const st = fs.statSync(fp); if (st.isDirectory()) out=out.concat(walk(fp)); else out.push(fp); } return out; };
+                const walk = (p)=>{ let out=[]; if (!fs.existsSync(p)) return out; for (const n of fs.readdirSync(p)){ const fp = join(p,n); const st = fs.statSync(fp); if (st.isDirectory()) out=out.concat(walk(fp)); else { const rel = '/' + fp.substring(projectRoot.length).replace(/\\/g,'/'); out.push(rel); } } return out; };
                 res.json({ files: walk(base) });
             }catch(e){ res.status(400).json({ error:'list failed', message:e.message }); }
         });

@@ -236,3 +236,25 @@ export async function saveConditions(conditions = []) {
   }
   return results;
 }
+
+// Read all workflows with actions from DB
+export function getAllWorkflows() {
+  const db = getDB();
+  return new Promise((resolve, reject) => {
+    db.all(`SELECT id, name, module FROM workflows`, (err, wfRows) => {
+      if (err) return reject(err);
+      const map = new Map();
+      (wfRows || []).forEach(w => {
+        map.set(w.id, { id: w.id, name: w.name, module: w.module, actions: [] });
+      });
+      db.all(`SELECT id, step_id, name, module, order_index FROM actions ORDER BY order_index`, (err2, aRows) => {
+        if (err2) return resolve(Array.from(map.values()));
+        (aRows || []).forEach(a => {
+          const wf = map.get(a.step_id);
+          if (wf) wf.actions.push({ id: a.id, name: a.name, module: a.module });
+        });
+        resolve(Array.from(map.values()));
+      });
+    });
+  });
+}
