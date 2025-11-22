@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <title>Founder.pl DSL - Testy i Walidacja</title>
+    <script src="validation-tests.js"></script>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 20px; 
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .test-passed { 
+            background-color: #d4edda; 
+            border-color: #c3e6cb; 
+            color: #155724;
+        }
+        .test-failed { 
+            background-color: #f8d7da; 
+            border-color: #f5c6cb; 
+            color: #721c24;
+        }
+        .test-pending { 
+            background-color: #fff3cd; 
+            border-color: #ffeaa7; 
+            color: #856404;
+        }
+        button { 
+            padding: 10px 20px; 
+            margin: 5px; 
+            border: none; 
+            border-radius: 4px; 
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .btn-primary { 
+            background-color: #007bff; 
+            color: white; 
+        }
+        .btn-success { 
+            background-color: #28a745; 
+            color: white; 
+        }
+        .btn-warning { 
+            background-color: #ffc107; 
+            color: black; 
+        }
+        .btn-danger { 
+            background-color: #dc3545; 
+            color: white; 
+        }
+        pre { 
+            background: #f8f9fa; 
+            padding: 15px; 
+            border-radius: 4px; 
+            overflow-x: auto;
+            border-left: 4px solid #007bff;
+        }
+        .stats {
+            display: flex;
+            justify-content: space-around;
+            margin: 20px 0;
+        }
+        .stat-item {
+            text-align: center;
+            padding: 15px;
+            border-radius: 8px;
+            background: #f8f9fa;
+        }
+        .stat-number {
+            font-size: 2em;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .requirements-check {
+            margin-top: 20px;
+        }
+        .requirement {
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 4px;
+            border-left: 4px solid #ccc;
+        }
+        .requirement.implemented {
+            background-color: #d4edda;
+            border-left-color: #28a745;
+        }
+        .requirement.missing {
+            background-color: #f8d7da;
+            border-left-color: #dc3545;
+        }
+        .requirement.partial {
+            background-color: #fff3cd;
+            border-left-color: #ffc107;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Founder.pl DSL - System Testów i Walidacji</h1>
+        
+        <div class="test-section">
+            <h2>Panel Kontrolny</h2>
+            <button class="btn-primary" onclick="runAllTests()">🚀 Uruchom wszystkie testy</button>
+            <button class="btn-success" onclick="validateCurrentSystem()">✅ Waliduj aktualny system</button>
+            <button class="btn-warning" onclick="checkRequirements()">📋 Sprawdź wymagania z README</button>
+            <button class="btn-danger" onclick="clearResults()">🗑️ Wyczyść wyniki</button>
+        </div>
+
+        <div class="test-section">
+            <h2>📋 Eksport Wyników</h2>
+            <button class="btn-primary" onclick="copyResultsToClipboard()">📋 Kopiuj wyniki do schowka</button>
+            <button class="btn-success" onclick="exportResultsAsJSON()">📄 Eksportuj jako JSON</button>
+            <button class="btn-warning" onclick="exportResultsAsMarkdown()">📝 Eksportuj jako Markdown</button>
+            <button class="btn-primary" onclick="generateTestReport()">📊 Generuj raport testów</button>
+            <div id="export-status" style="margin-top: 10px; font-weight: bold;"></div>
+        </div>
+
+        <div class="stats" id="stats-panel" style="display: none;">
+            <div class="stat-item">
+                <div class="stat-number" id="total-tests">0</div>
+                <div>Łączna liczba testów</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number" id="passed-tests" style="color: #28a745;">0</div>
+                <div>Testy zakończone sukcesem</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number" id="failed-tests" style="color: #dc3545;">0</div>
+                <div>Testy nieudane</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number" id="coverage-percent" style="color: #007bff;">0%</div>
+                <div>Pokrycie funkcji</div>
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h2>📊 Wyniki Testów</h2>
+            <div id="test-results"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>⚠️ Błędy Walidacji</h2>
+            <div id="validation-errors"></div>
+        </div>
+
+        <div class="test-section requirements-check">
+            <h2>📋 Sprawdzenie Wymagań z README.md</h2>
+            <div id="requirements-status"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>🔍 Szczegółowy Raport</h2>
+            <pre id="detailed-report"></pre>
+        </div>
+    </div>
+
+    <script>
+        let validator = new DSLValidator();
+        
+        // Definicja wymagań z README.md
+        const readmeRequirements = [
+            {
+                id: 'yaml-editor',
+                name: 'Edytor YAML',
+                description: 'Możliwość tworzenia i edycji workflow w formacie YAML',
+                checkFunction: () => checkYAMLEditor()
+            },
+            {
+                id: 'nlp-editor',
+                name: 'Edytor NLP',
+                description: 'System przetwarza naturalny język i zamienia zdania na kroki workflow',
+                checkFunction: () => checkNLPEditor()
+            },
+            {
+                id: 'mermaid-diagram',
+                name: 'Diagram Workflow (Mermaid)',
+                description: 'Wizualizacja kroków workflow i zależności między nimi',
+                checkFunction: () => checkMermaidDiagram()
+            },
+            {
+                id: 'cqrs-event-sourcing',
+                name: 'CQRS + Event Sourcing',
+                description: 'Oddzielenie logiki komend od stanu systemu',
+                checkFunction: () => checkCQRSImplementation()
+            },
+            {
+                id: 'event-store',
+                name: 'Event Store',
+                description: 'Zapis wszystkich zdarzeń (akcje wykonane w workflow, timestamp, status)',
+                checkFunction: () => checkEventStore()
+            },
+            {
+                id: 'read-model',
+                name: 'Read Model',
+                description: 'Tabela pokazująca stan akcji, status i timestamp',
+                checkFunction: () => checkReadModel()
+            },
+            {
+                id: 'action-log',
+                name: 'Log akcji',
+                description: 'Historia wykonanych akcji, przydatna do debugowania i monitorowania',
+                checkFunction: () => checkActionLog()
+            },
+            {
+                id: 'module-mapping',
+                name: 'Mapowanie modułów',
+                description: 'Automatyczne przypisywanie kroków do modułów na podstawie słów kluczowych',
+                checkFunction: () => checkModuleMapping()
+            },
+            {
+                id: 'interactive-diagram',
+                name: 'Interaktywność diagramu',
+                description: 'Kliknięcie w węzeł wyzwala komendę, dodaje zdarzenie do Event Store',
+                checkFunction: () => checkInteractiveDiagram()
+            }
+        ];
+
+        function runAllTests() {
+            console.log('🧪 Rozpoczynam pełne testowanie systemu...');
+            
+            const results = validator.runAllTests();
+            displayTestResults(results);
+            updateStats(results);
+            
+            // Dodatkowo sprawdź wymagania
+            setTimeout(() => {
+                checkRequirements();
+            }, 500);
+        }
+
+        function validateCurrentSystem() {
+            console.log('✅ Walidacja aktualnego systemu...');
+            
+            const errors = [];
+            
+            // Sprawdź czy główne funkcje istnieją w parent window
+            try {
+                if (window.parent && window.parent.sanitizeId) {
+                    console.log('✅ Funkcja sanitizeId dostępna');
+                } else {
+                    errors.push('❌ Funkcja sanitizeId niedostępna');
+                }
+                
+                if (window.parent && window.parent.eventStore) {
+                    console.log('✅ Event Store dostępny');
+                    const eventStoreErrors = validator.validateEventStore(window.parent.eventStore);
+                    errors.push(...eventStoreErrors);
+                } else {
+                    errors.push('❌ Event Store niedostępny');
+                }
+                
+            } catch (e) {
+                errors.push(`❌ Błąd walidacji: ${e.message}`);
+            }
+            
+            displayValidationErrors(errors);
+        }
+
+        function checkRequirements() {
+            console.log('📋 Sprawdzam wymagania z README.md...');
+            
+            const requirementsStatus = readmeRequirements.map(req => {
+                try {
+                    const status = req.checkFunction();
+                    return {
+                        ...req,
+                        status: status.implemented ? 'implemented' : (status.partial ? 'partial' : 'missing'),
+                        details: status.details
+                    };
+                } catch (e) {
+                    return {
+                        ...req,
+                        status: 'missing',
+                        details: `Błąd sprawdzania: ${e.message}`
+                    };
+                }
+            });
+            
+            displayRequirementsStatus(requirementsStatus);
+        }
+
+        function clearResults() {
+            validator.clearErrors();
+            document.getElementById('test-results').innerHTML = '';
+            document.getElementById('validation-errors').innerHTML = '';
+            document.getElementById('requirements-status').innerHTML = '';
+            document.getElementById('detailed-report').textContent = '';
+            document.getElementById('stats-panel').style.display = 'none';
+        }
+
+        function displayTestResults(results) {
+            const container = document.getElementById('test-results');
+            container.innerHTML = '';
+            
+            if (results.length === 0) {
+                container.innerHTML = '<p>Brak wyników testów.</p>';
+                return;
+            }
+            
+            results.forEach(result => {
+                const div = document.createElement('div');
+                div.className = `test-section ${result.passed ? 'test-passed' : 'test-failed'}`;
+                
+                const status = result.passed ? '✅' : '❌';
+                const testName = result.name || result.input || result.text || 'Test';
+                
+                div.innerHTML = `
+                    <h4>${status} ${result.test}: ${testName}</h4>
+                    ${result.errors ? `<p>Błędy: ${result.errors.join(', ')}</p>` : ''}
+                    ${result.error ? `<p>Błąd: ${result.error}</p>` : ''}
+                    ${result.expected ? `<p>Oczekiwane: ${result.expected}</p>` : ''}
+                    ${result.actual ? `<p>Otrzymane: ${result.actual}</p>` : ''}
+                `;
+                
+                container.appendChild(div);
+            });
+        }
+
+        function displayValidationErrors(errors) {
+            const container = document.getElementById('validation-errors');
+            
+            if (errors.length === 0) {
+                container.innerHTML = '<div class="test-section test-passed">✅ Brak błędów walidacji</div>';
+            } else {
+                container.innerHTML = `
+                    <div class="test-section test-failed">
+                        <h4>❌ Znalezione błędy walidacji:</h4>
+                        <ul>
+                            ${errors.map(error => `<li>${error}</li>`).join('')}
+                        </ul>
+                    </div>
+                `;
+            }
+        }
+
+        function displayRequirementsStatus(requirements) {
+            const container = document.getElementById('requirements-status');
+            container.innerHTML = '';
+            
+            requirements.forEach(req => {
+                const div = document.createElement('div');
+                div.className = `requirement ${req.status}`;
+                
+                const statusIcon = {
+                    'implemented': '✅',
+                    'partial': '⚠️',
+                    'missing': '❌'
+                }[req.status];
+                
+                div.innerHTML = `
+                    <h4>${statusIcon} ${req.name}</h4>
+                    <p>${req.description}</p>
+                    <small>${req.details}</small>
+                `;
+                
+                container.appendChild(div);
+            });
+        }
+
+        function updateStats(results) {
+            const total = results.length;
+            const passed = results.filter(r => r.passed).length;
+            const failed = total - passed;
+            const coverage = total > 0 ? Math.round((passed / total) * 100) : 0;
+            
+            document.getElementById('total-tests').textContent = total;
+            document.getElementById('passed-tests').textContent = passed;
+            document.getElementById('failed-tests').textContent = failed;
+            document.getElementById('coverage-percent').textContent = coverage + '%';
+            
+            document.getElementById('stats-panel').style.display = 'flex';
+            
+            // Aktualizuj szczegółowy raport
+            const report = validator.generateValidationReport();
+            document.getElementById('detailed-report').textContent = JSON.stringify(report, null, 2);
+        }
+
+        // === FUNKCJE SPRAWDZANIA WYMAGAŃ ===
+
+        function checkYAMLEditor() {
+            // Sprawdź czy istnieje textarea z yaml-editor
+            const yamlEditor = document.querySelector('#yaml-editor') || 
+                             (window.parent && window.parent.document.querySelector('#yaml-editor'));
+            
+            return {
+                implemented: !!yamlEditor,
+                details: yamlEditor ? 'Edytor YAML znaleziony' : 'Edytor YAML nie znaleziony'
+            };
+        }
+
+        function checkNLPEditor() {
+            const nlpEditor = document.querySelector('#sentence-editor') || 
+                             (window.parent && window.parent.document.querySelector('#sentence-editor'));
+            
+            return {
+                implemented: !!nlpEditor,
+                details: nlpEditor ? 'Edytor NLP znaleziony' : 'Edytor NLP nie znaleziony'
+            };
+        }
+
+        function checkMermaidDiagram() {
+            const hasMermaid = typeof mermaid !== 'undefined' || 
+                              (window.parent && typeof window.parent.mermaid !== 'undefined');
+            
+            return {
+                implemented: hasMermaid,
+                details: hasMermaid ? 'Mermaid.js załadowany' : 'Mermaid.js nie znaleziony'
+            };
+        }
+
+        function checkCQRSImplementation() {
+            const hasCommandHandler = (window.parent && typeof window.parent.sendCommand === 'function');
+            const hasEventProcessor = (window.parent && typeof window.parent.processEvent === 'function');
+            
+            return {
+                implemented: hasCommandHandler && hasEventProcessor,
+                partial: hasCommandHandler || hasEventProcessor,
+                details: `Command Handler: ${hasCommandHandler ? '✅' : '❌'}, Event Processor: ${hasEventProcessor ? '✅' : '❌'}`
+            };
+        }
+
+        function checkEventStore() {
+            const hasEventStore = (window.parent && Array.isArray(window.parent.eventStore));
+            
+            return {
+                implemented: hasEventStore,
+                details: hasEventStore ? `Event Store z ${window.parent.eventStore.length} zdarzeniami` : 'Event Store nie znaleziony'
+            };
+        }
+
+        function checkReadModel() {
+            const hasReadModel = (window.parent && Array.isArray(window.parent.readModel));
+            
+            return {
+                implemented: hasReadModel,
+                details: hasReadModel ? `Read Model z ${window.parent.readModel.length} rekordami` : 'Read Model nie znaleziony'
+            };
+        }
+
+        function checkActionLog() {
+            const hasLogElement = document.querySelector('#log') || 
+                                 (window.parent && window.parent.document.querySelector('#log'));
+            
+            return {
+                implemented: !!hasLogElement,
+                details: hasLogElement ? 'Element logu znaleziony' : 'Element logu nie znaleziony'
+            };
+        }
+
+        function checkModuleMapping() {
+            // Sprawdź czy istnieje logika mapowania modułów
+            const hasModuleMapping = validator.moduleMap && Object.keys(validator.moduleMap).length > 0;
+            
+            return {
+                implemented: hasModuleMapping,
+                details: hasModuleMapping ? `Mapowanie dla ${Object.keys(validator.moduleMap).length} modułów` : 'Mapowanie modułów nie znalezione'
+            };
+        }
+
+        function checkInteractiveDiagram() {
+            // Sprawdź czy diagram ma interaktywność
+            const hasDiagramElement = document.querySelector('#diagram') || 
+                                     (window.parent && window.parent.document.querySelector('#diagram'));
+            
+            return {
+                implemented: !!hasDiagramElement,
+                partial: !!hasDiagramElement,
+                details: hasDiagramElement ? 'Element diagramu znaleziony' : 'Element diagramu nie znaleziony'
+            };
+        }
+
+        // === FUNKCJE EKSPORTU I KOPIOWANIA ===
+
+        async function copyResultsToClipboard() {
+            try {
+                const report = generateDetailedReport();
+                await navigator.clipboard.writeText(report);
+                showExportStatus('✅ Wyniki skopiowane do schowka!', 'success');
+            } catch (err) {
+                console.error('Błąd kopiowania:', err);
+                showExportStatus('❌ Błąd kopiowania do schowka', 'error');
+                
+                // Fallback - pokaż w oknie modalnym do ręcznego kopiowania
+                showCopyFallback(generateDetailedReport());
+            }
+        }
+
+        function exportResultsAsJSON() {
+            const report = validator.generateValidationReport();
+            const jsonString = JSON.stringify(report, null, 2);
+            downloadFile(jsonString, 'test-results.json', 'application/json');
+            showExportStatus('✅ Wyniki wyeksportowane jako JSON', 'success');
+        }
+
+        function exportResultsAsMarkdown() {
+            const markdownReport = generateMarkdownReport();
+            downloadFile(markdownReport, 'test-results.md', 'text/markdown');
+            showExportStatus('✅ Wyniki wyeksportowane jako Markdown', 'success');
+        }
+
+        function generateTestReport() {
+            const htmlReport = generateHTMLReport();
+            downloadFile(htmlReport, 'test-report.html', 'text/html');
+            showExportStatus('✅ Raport HTML wygenerowany', 'success');
+        }
+
+        function generateDetailedReport() {
+            const timestamp = new Date().toLocaleString('pl-PL');
+            const report = validator.generateValidationReport();
+            
+            let output = `# 🧪 Raport Testów Founder.pl DSL\n\n`;
+            output += `**Data wygenerowania:** ${timestamp}\n\n`;
+            output += `## 📊 Podsumowanie\n\n`;
+            output += `- **Łączna liczba testów:** ${report.totalTests}\n`;
+            output += `- **Testy zakończone sukcesem:** ${report.passedTests}\n`;
+            output += `- **Testy nieudane:** ${report.failedTests}\n`;
+            output += `- **Procent sukcesu:** ${Math.round((report.passedTests / report.totalTests) * 100)}%\n\n`;
+
+            if (report.testResults.length > 0) {
+                output += `## 🔍 Szczegóły Testów\n\n`;
+                report.testResults.forEach((result, index) => {
+                    const status = result.passed ? '✅' : '❌';
+                    const testName = result.name || result.input || result.text || 'Test';
+                    output += `### ${index + 1}. ${status} ${result.test}: ${testName}\n\n`;
+                    
+                    if (result.errors && result.errors.length > 0) {
+                        output += `**Błędy:**\n`;
+                        result.errors.forEach(error => output += `- ${error}\n`);
+                        output += `\n`;
+                    }
+                    
+                    if (result.expected) output += `**Oczekiwane:** ${result.expected}\n`;
+                    if (result.actual) output += `**Otrzymane:** ${result.actual}\n`;
+                    if (result.error) output += `**Błąd:** ${result.error}\n`;
+                    output += `\n`;
+                });
+            }
+
+            if (report.validationErrors.length > 0) {
+                output += `## ⚠️ Błędy Walidacji\n\n`;
+                report.validationErrors.forEach((error, index) => {
+                    output += `${index + 1}. ${error}\n`;
+                });
+                output += `\n`;
+            }
+
+            return output;
+        }
+
+        function generateMarkdownReport() {
+            return generateDetailedReport();
+        }
+
+        function generateHTMLReport() {
+            const report = validator.generateValidationReport();
+            const timestamp = new Date().toLocaleString('pl-PL');
+            
+            let html = `<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <title>Raport Testów DSL</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .passed { color: #28a745; }
+        .failed { color: #dc3545; }
+        .summary { background: #f8f9fa; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
+        .test-item { margin: 10px 0; padding: 10px; border-left: 3px solid #ccc; }
+        .test-passed { border-left-color: #28a745; }
+        .test-failed { border-left-color: #dc3545; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Raport Testów Founder.pl DSL</h1>
+    <p><strong>Data wygenerowania:</strong> ${timestamp}</p>
+    
+    <div class="summary">
+        <h2>📊 Podsumowanie</h2>
+        <ul>
+            <li><strong>Łączna liczba testów:</strong> ${report.totalTests}</li>
+            <li><strong>Testy zakończone sukcesem:</strong> <span class="passed">${report.passedTests}</span></li>
+            <li><strong>Testy nieudane:</strong> <span class="failed">${report.failedTests}</span></li>
+            <li><strong>Procent sukcesu:</strong> ${Math.round((report.passedTests / report.totalTests) * 100)}%</li>
+        </ul>
+    </div>`;
+
+            if (report.testResults.length > 0) {
+                html += `<h2>🔍 Szczegóły Testów</h2>`;
+                report.testResults.forEach((result, index) => {
+                    const status = result.passed ? '✅' : '❌';
+                    const cssClass = result.passed ? 'test-passed' : 'test-failed';
+                    const testName = result.name || result.input || result.text || 'Test';
+                    
+                    html += `<div class="test-item ${cssClass}">
+                        <h3>${status} ${result.test}: ${testName}</h3>`;
+                    
+                    if (result.errors && result.errors.length > 0) {
+                        html += `<p><strong>Błędy:</strong></p><ul>`;
+                        result.errors.forEach(error => html += `<li>${error}</li>`);
+                        html += `</ul>`;
+                    }
+                    
+                    if (result.expected) html += `<p><strong>Oczekiwane:</strong> ${result.expected}</p>`;
+                    if (result.actual) html += `<p><strong>Otrzymane:</strong> ${result.actual}</p>`;
+                    if (result.error) html += `<p><strong>Błąd:</strong> ${result.error}</p>`;
+                    
+                    html += `</div>`;
+                });
+            }
+
+            html += `</body></html>`;
+            return html;
+        }
+
+        function downloadFile(content, filename, mimeType) {
+            const blob = new Blob([content], { type: mimeType });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function showExportStatus(message, type) {
+            const statusDiv = document.getElementById('export-status');
+            statusDiv.textContent = message;
+            statusDiv.className = type === 'success' ? 'text-success' : 'text-danger';
+            
+            setTimeout(() => {
+                statusDiv.textContent = '';
+                statusDiv.className = '';
+            }, 3000);
+        }
+
+        function showCopyFallback(content) {
+            const modal = document.createElement('div');
+            modal.style.cssText = `
+                position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+                background: rgba(0,0,0,0.5); z-index: 1000; display: flex;
+                align-items: center; justify-content: center;
+            `;
+            
+            modal.innerHTML = `
+                <div style="background: white; padding: 20px; border-radius: 8px; max-width: 80%; max-height: 80%; overflow: auto;">
+                    <h3>📋 Skopiuj wyniki ręcznie</h3>
+                    <textarea readonly style="width: 100%; height: 400px; font-family: monospace;">${content}</textarea>
+                    <div style="margin-top: 10px;">
+                        <button onclick="this.parentElement.parentElement.parentElement.remove()" 
+                                style="padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px;">
+                            Zamknij
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+        }
+
+        // Automatyczne uruchomienie podstawowych testów przy załadowaniu
+        window.addEventListener('load', () => {
+            console.log('🚀 System testów załadowany. Gotowy do walidacji!');
+        });
+    </script>
+</body>
+</html>

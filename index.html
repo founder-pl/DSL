@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <title>Founder.pl Interaktywny Workflow CQRS + Event Sourcing</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+    <script src="advanced-features.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        textarea { width: 100%; height: 100px; font-family: monospace; margin-bottom: 10px; }
+        button { padding: 5px 10px; margin-bottom: 20px; }
+        #diagram, #cqrs-diagram { border:1px solid #ccc; padding:10px; border-radius:5px; margin-bottom:20px; }
+        pre { background:#f5f5f5; padding:10px; border-radius:5px; max-height:300px; overflow:auto;}
+        .action-node:hover { stroke: #ff6600; stroke-width: 2px; cursor: pointer;}
+    </style>
+</head>
+<body>
+
+<h1>Founder.pl Interaktywny Workflow + CQRS/Event Sourcing</h1>
+
+<h2>Edytor YAML</h2>
+<textarea id="yaml-editor">workflow: Przykładowy workflow
+steps:
+  - id: payment
+    name: Wpłata klienta
+    module: Platnosci
+    actions:
+      - id: invoice
+        name: Wystaw fakturę
+        module: Finanse
+      - id: run_campaign
+        name: Uruchom kampanię retargetingową
+        module: Reklama
+</textarea>
+<button id="update-btn">Aktualizuj diagram workflow</button>
+
+<h2>Edytor NLP</h2>
+<textarea id="sentence-editor" placeholder="Np. 'Gdy wpłata klienta nastąpi, wystaw fakturę i uruchom kampanię retargetingową.'"></textarea>
+<button id="sentence-btn">Dodaj z NLP</button>
+<button id="advanced-nlp-btn">🧠 Zaawansowane NLP</button>
+
+<h2>⚡ Zaawansowane Funkcje</h2>
+<div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px;">
+    <button id="templates-btn">📋 Szablony workflow</button>
+    <button id="schedule-btn">⏰ Harmonogram zadań</button>
+    <button id="webhooks-btn">🔗 Webhooks</button>
+    <button id="metrics-btn">📊 Metryki</button>
+    <button id="conditions-btn">🔀 Warunki</button>
+</div>
+
+<div id="advanced-panel" style="display: none; border: 1px solid #ddd; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+    <h3 id="panel-title">Panel zaawansowany</h3>
+    <div id="panel-content"></div>
+</div>
+
+<h2>Diagram Workflow</h2>
+<div class="mermaid" id="diagram"></div>
+
+<h2>Diagram CQRS + Event Sourcing</h2>
+<div class="mermaid" id="cqrs-diagram"></div>
+
+<h2>Log / Read Model / Event Store</h2>
+<pre id="log"></pre>
+
+<h2>🧪 Testy i Walidacja</h2>
+<p>
+    <a href="test-runner.html" target="_blank" style="display: inline-block; padding: 10px 20px; background-color: #007bff; color: white; text-decoration: none; border-radius: 4px;">
+        🚀 Otwórz panel testów i walidacji
+    </a>
+</p>
+
+<script>
+    mermaid.initialize({startOnLoad:false, theme:'neutral'});
+
+    // --- Event Store ---
+    let eventStore = [];
+    let readModel = [];
+    
+    // --- Zaawansowane funkcje ---
+    let advancedFeatures = new AdvancedWorkflowFeatures();
+    let diagramEnhancements = new DiagramEnhancements();
+
+    // --- Sanitacja ID ---
+    function sanitizeId(text){
+        return text.normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+            .replace(/[^a-zA-Z0-9_]/g,'_').replace(/_+/g,'_').replace(/^_|_$/g,'');
+    }
+
+    // --- Rozszerzone mapowanie modułów ---
+    function getModuleForKeywords(text) {
+        const moduleMap = {
+            'Platnosci': ['wpłata', 'płatność', 'payment', 'przelew', 'karta'],
+            'Finanse': ['faktura', 'invoice', 'księgowość', 'raport', 'finanse', 'accounting'],
+            'Reklama': ['kampania', 'reklama', 'marketing', 'retargeting', 'ads'],
+            'Marketing': ['newsletter', 'email', 'wiadomość', 'powitalny', 'promocja'],
+            'CRM': ['klient', 'crm', 'kontakt', 'customer', 'relacje'],
+            'eDoręczenia': ['doręczenie', 'e-doręczenie', 'poczta', 'mail'],
+            'Powiadomienia': ['powiadom', 'notification', 'alert', 'inform'],
+            'Analiza': ['analiza', 'raport', 'dashboard', 'statystyki', 'metrics']
+        };
+        
+        const textLower = text.toLowerCase();
+        for (const [module, keywords] of Object.entries(moduleMap)) {
+            if (keywords.some(keyword => textLower.includes(keyword))) {
+                return module;
+            }
+        }
+        return 'Default';
+    }
+
+    // --- Generowanie Mermaid workflow ---
+    function generateMermaid(workflow){
+        let code = "flowchart TD\n";
+        const modules = {};
+        workflow.steps.forEach(step=>{
+            const mod = step.module || "Default";
+            if(!modules[mod]) modules[mod] = [];
+            modules[mod].push(step);
+        });
+
+        Object.keys(modules).forEach(mod=>{
+            code += `subgraph ${sanitizeId(mod)}[${mod}]\n`;
+            modules[mod].forEach(step=>{
+                const stepId = sanitizeId(step.id);
+                code += `  ${stepId}["${step.name}"]:::action-node\n`;
+                step.actions.forEach((a,i)=>{
+                    const actionId = sanitizeId(a.id);
+                    code += `  ${actionId}["${a.name}"]:::action-node\n`;
+                    code += `  ${stepId} --> ${actionId}\n`;
+                });
+            });
+            code += `end\n`;
+        });
+        code += 'classDef action-node fill:#f9f,stroke:#333,stroke-width:1px;\n';
+        return code;
+    }
+
+    // --- Renderowanie diagramu workflow ---
+    function renderDiagram(workflow){
+        const code = generateMermaid(workflow);
+        const div = document.getElementById("diagram");
+        div.textContent = code;
+        mermaid.init(undefined, div);
+
+        // Dodaj interaktywność
+        setTimeout(()=>{ // trzeba odczekać na render
+            const nodes = div.querySelectorAll('.node');
+            nodes.forEach(node=>{
+                node.style.cursor='pointer';
+                node.onclick = () => {
+                    const actionName = node.querySelector('tspan')?.textContent || node.querySelector('span')?.textContent;
+                    if(actionName) sendCommand(actionName);
+                }
+            });
+        }, 100);
+    }
+
+    // --- Command Handler ---
+    function sendCommand(actionName){
+        const timestamp = new Date().toISOString();
+        const event = {actionName, timestamp};
+        eventStore.push(event);
+        processEvent(event);
+        updateLog(event);
+    }
+
+    // --- Event Processor ---
+    function processEvent(event){
+        // Aktualizacja Read Model
+        readModel.push({actionName: event.actionName, status: "done", timestamp: event.timestamp});
+    }
+
+    // --- Aktualizacja logu ---
+    function updateLog(event){
+        const log = document.getElementById("log");
+        log.textContent += `[${event.timestamp}] Akcja wykonana: ${event.actionName}\n`;
+    }
+
+    // --- NLP parser zdań ---
+    document.getElementById("sentence-btn").addEventListener("click",()=>{
+        const sentence = document.getElementById("sentence-editor").value;
+        if(!sentence) return;
+        const match = sentence.match(/Gdy (.+?), (.+)/i);
+        if(!match){ alert("Niepoprawny format zdania."); return; }
+
+        const stepNameRaw = match[1].trim();
+        const stepName = sanitizeId(stepNameRaw);
+        const actionsText = match[2].split(" i ").map(a=>a.trim().replace(/\.$/,''));
+        // Rozszerzone mapowanie modułów
+        const stepModule = getModuleForKeywords(stepNameRaw);
+
+        const newStep = {
+            id: stepName,
+            name: stepNameRaw,
+            module: stepModule,
+            actions: actionsText.map((a,i)=>({id:stepName+"_action"+(i+1), name:a, module:getModuleForKeywords(a)}))
+        };
+
+        try{
+            const workflow = jsyaml.load(document.getElementById("yaml-editor").value);
+            workflow.steps.push(newStep);
+            document.getElementById("yaml-editor").value = jsyaml.dump(workflow);
+            renderDiagram(workflow);
+            actionsText.forEach(a=>sendCommand(a));
+            document.getElementById("sentence-editor").value="";
+        }catch(e){ alert("Błąd YAML: "+e.message);}
+    });
+
+    // --- Aktualizacja workflow z YAML ---
+    document.getElementById("update-btn").addEventListener("click",()=>{
+        try{
+            const workflow = jsyaml.load(document.getElementById("yaml-editor").value);
+            renderDiagram(workflow);
+        }catch(e){ alert("Błąd YAML: "+e.message);}
+    });
+
+    // --- Renderowanie diagramu CQRS ---
+    const cqrsDiagram = `
+flowchart LR
+    UI_API["UI / API"] --> CommandHandler["Command Handler"]
+    CommandHandler --> EventStore["Event Store"]
+    EventStore --> EventProcessor["Event Processor"]
+    EventProcessor --> ReadModel["Read Models"]
+    EventProcessor --> Integrations["Integracje / Automatyzacje"]
+    UI_API --> ReadModel
+`;
+    document.getElementById("cqrs-diagram").textContent = cqrsDiagram;
+    mermaid.init(undefined, document.getElementById("cqrs-diagram"));
+
+    // --- Początkowe renderowanie workflow ---
+    try{
+        const workflow = jsyaml.load(document.getElementById("yaml-editor").value);
+        renderDiagram(workflow);
+    }catch(e){ console.error(e); }
+
+</script>
+</body>
+</html>
