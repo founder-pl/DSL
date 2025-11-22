@@ -34,6 +34,8 @@ steps:
         module: Reklama
 </textarea>
 <button id="update-btn">Aktualizuj diagram workflow</button>
+<button id="gen-js-btn">⚙️ Generuj JS z YAML</button>
+<a id="gen-js-download" style="display:none; margin-left:10px;">Pobierz JS</a>
 
 <h2>Edytor NLP</h2>
 <textarea id="sentence-editor" placeholder="Np. 'Gdy wpłata klienta nastąpi, wystaw fakturę i uruchom kampanię retargetingową.'"></textarea>
@@ -55,10 +57,10 @@ steps:
 </div>
 
 <h2>Diagram Workflow</h2>
-<div class="mermaid" id="diagram"></div>
+<div id="diagram"></div>
 
 <h2>Diagram CQRS + Event Sourcing</h2>
-<div class="mermaid" id="cqrs-diagram"></div>
+<div id="cqrs-diagram"></div>
 
 <h2>Log / Read Model / Event Store</h2>
 <pre id="log"></pre>
@@ -82,6 +84,8 @@ steps:
 <h2>Przetwarzanie wielu zdań (NLP batch)</h2>
 <textarea id="multi-sentences-editor" placeholder="Wklej wiele zdań, każde w nowej linii lub oddzielone kropką"></textarea>
 <button id="process-multi-btn">Przetwórz wiele zdań</button>
+<button id="fill-examples-btn">Wstaw przykłady</button>
+<button id="check-duplicates-btn">🔎 Sprawdź duplikaty (DSL)</button>
 <div id="multi-diagrams" style="margin-top:10px;"></div>
 
 <script type="module">
@@ -104,6 +108,7 @@ steps:
     const mapper = new ModuleMapper();
     window.sanitizer = sanitizer;
     window.mapper = mapper;
+    window.__dsl_handlers_inited = window.__dsl_handlers_inited || false;
 
     // --- Zaawansowane funkcje ---
     let advancedFeatures = new window.AdvancedWorkflowFeatures();
@@ -128,18 +133,28 @@ steps:
     }
 
     // --- Renderowanie diagramu workflow ---
-    function renderDiagram(workflow){
+    async function renderDiagram(workflow){
         const errs = validateWF(workflow) || [];
         if (errs.length){
             const divErr = document.getElementById("diagram");
-            divErr.textContent = "flowchart TD\nError[\"Błąd walidacji workflow\"]";
-            mermaid.init(undefined, divErr);
+            try { divErr.removeAttribute('data-processed'); } catch(_){}
+            divErr.innerHTML = '';
+            const { svg } = await mermaid.render('mermaid-error-'+Date.now(), "flowchart TD\nError[\"Błąd walidacji workflow\"]");
+            divErr.innerHTML = svg;
             return;
         }
         const code = generateMermaid(workflow);
         const div = document.getElementById("diagram");
-        div.textContent = code;
-        mermaid.init(undefined, div);
+        try { div.removeAttribute('data-processed'); } catch(_){ }
+        div.innerHTML = '';
+        try{
+            const { svg } = await mermaid.render('mermaid-main-'+Date.now(), code);
+            div.innerHTML = svg;
+        }catch(err){
+            const esc = (s)=> String(s||'').replace(/"/g,'\\"').replace(/\[/g,'(').replace(/\]/g,')');
+            const { svg } = await mermaid.render('mermaid-main-err-'+Date.now(), `flowchart TD\nError["${esc(err?.message||'Render error')}"]`);
+            div.innerHTML = svg;
+        }
 
         // Dodaj interaktywność
         setTimeout(()=>{ // trzeba odczekać na render
@@ -152,12 +167,17 @@ steps:
                 }
             });
 
+            // Initialize one-time handlers for batch NLP and DB UI
+            if (!window.__dsl_handlers_inited) {
+                window.__dsl_handlers_inited = true;
+
     // --- NLP batch z wielu zdań ---
     document.getElementById('process-multi-btn').addEventListener('click', async ()=>{
         const text = document.getElementById('multi-sentences-editor').value || '';
         const sentences = parseMultipleSentences(text);
         const container = document.getElementById('multi-diagrams');
         container.innerHTML = '';
+        try { container.removeAttribute('data-processed'); } catch(_){}
         if (!sentences.length){
             container.textContent = 'Brak poprawnych zdań w formacie: "Gdy ..., ..."';
             return;
@@ -168,22 +188,71 @@ steps:
                 body: JSON.stringify({ text })
             });
             const data = await resp.json();
-            (data.results || []).forEach((r, idx) => {
-                const div = document.createElement('div');
-                div.className = 'mermaid';
-                div.style.marginTop = '10px';
-                div.textContent = r.success ? r.diagram : `flowchart TD\nError["${r.error}"]`;
-                container.appendChild(div);
-                // Also log actions
+            const esc = (s)=> String(s||'').replace(/"/g,'\\"').replace(/\[/g,'(').replace(/\]/g,')');
+            for (let idx = 0; idx < (data.results || []).length; idx++){
+                const r = data.results[idx];
+                const wrap = document.createElement('div');
+                wrap.style.marginTop = '10px';
+                container.appendChild(wrap);
+                try{
+                    const code = r.success ? r.diagram : `flowchart TD\nError[\"${esc(r.error)}\"]`;
+                    const { svg } = await mermaid.render('multi-'+Date.now()+'-'+idx, code);
+                    wrap.innerHTML = svg;
+                }catch(err){
+                    const { svg } = await mermaid.render('multi-err-'+Date.now()+'-'+idx, `flowchart TD\nError[\"${esc(err?.message)}\"]`);
+                    wrap.innerHTML = svg;
+                }
                 if (r.success && Array.isArray(r.workflow?.actions)){
                     r.workflow.actions.forEach(a => updateLog({ timestamp: new Date().toISOString(), actionName: a.name }));
                 }
-            });
-            // Render all mermaid blocks in container
-            mermaid.init(undefined, container);
+            }
         }catch(e){
             container.textContent = 'Błąd przetwarzania: ' + e.message;
         }
+    });
+
+    // Wstaw przykłady
+    document.getElementById('fill-examples-btn').addEventListener('click', ()=>{
+        const examples = [
+            'Gdy wpłata klienta nastąpi, wystaw fakturę i uruchom kampanię retargetingową.',
+            'Gdy nadejdzie nowe e-Doręczenie, powiadom zespół i zaktualizuj raporty księgowe.',
+            'Gdy nowy klient zapisze się na newsletter, wyślij wiadomość powitalną i dodaj go do CRM.',
+            'Gdy faktura zostanie opłacona, wygeneruj raport sprzedaży i zaktualizuj dashboard finansowy.',
+            'Gdy termin płatności minie, wyślij ponaglenie i utwórz zadanie w CRM.',
+            'Gdy zapas magazynowy spadnie poniżej progu, zamów towar i powiadom dział zakupów.'
+        ];
+        document.getElementById('multi-sentences-editor').value = examples.join('\n');
+    });
+
+    // Sprawdź duplikaty DSL (po ID)
+    document.getElementById('check-duplicates-btn').addEventListener('click', async ()=>{
+        try{
+            const resp = await fetch('/api/workflow/duplicates');
+            const data = await resp.json();
+            const msg = data.duplicates && data.duplicates.length
+                ? `Znaleziono duplikaty: ${data.duplicates.map(d=>d.id+`(x${d.count})`).join(', ')}`
+                : 'Brak duplikatów.';
+            alert(msg);
+        }catch(e){ alert('Błąd sprawdzania duplikatów: '+e.message); }
+    });
+
+    // Generowanie JS z YAML
+    document.getElementById('gen-js-btn').addEventListener('click', async ()=>{
+        try{
+            const yamlText = document.getElementById('yaml-editor').value;
+            const resp = await fetch('/api/generator/js', {
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ yaml: yamlText })
+            });
+            if (!resp.ok) throw new Error('HTTP '+resp.status);
+            const code = await resp.text();
+            const blob = new Blob([code], { type: 'application/javascript' });
+            const url = URL.createObjectURL(blob);
+            const a = document.getElementById('gen-js-download');
+            a.style.display = 'inline-block';
+            a.href = url; a.download = 'dsl-generated.js';
+            a.textContent = 'Pobierz JS (dsl-generated.js)';
+        }catch(e){ alert('Błąd generowania JS: '+e.message); }
     });
 
     // --- DB: Download/upload/validate ---
@@ -228,6 +297,7 @@ steps:
             document.getElementById('db-status').textContent = data.exists ? ('Baza OK: '+data.path) : 'Baza nie istnieje';
         }catch(e){ document.getElementById('db-status').textContent = 'Błąd walidacji: '+e.message; }
     });
+            }
         }, 100);
     }
 
@@ -322,8 +392,13 @@ flowchart LR
     EventProcessor --> Integrations["Integracje / Automatyzacje"]
     UI_API --> ReadModel
 `;
-    document.getElementById("cqrs-diagram").textContent = cqrsDiagram;
-    mermaid.init(undefined, document.getElementById("cqrs-diagram"));
+    (async ()=>{
+        const el = document.getElementById("cqrs-diagram");
+        try { el.removeAttribute('data-processed'); } catch(_){ }
+        el.innerHTML = '';
+        const { svg } = await mermaid.render('cqrs-'+Date.now(), cqrsDiagram);
+        el.innerHTML = svg;
+    })();
 
     // === OBSŁUGA ZAAWANSOWANYCH FUNKCJI ===
 

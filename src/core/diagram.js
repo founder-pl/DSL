@@ -25,14 +25,19 @@ export function generateMermaid(workflow, sanitizerInstance) {
     modules[mod].push(step);
   });
 
+  const escapeLabel = (s) => String(s ?? '')
+    .replace(/"/g, '\\"')
+    .replace(/\[/g, '(')
+    .replace(/\]/g, ')');
+
   Object.keys(modules).forEach(mod => {
-    code += `    subgraph ${sanitizer.sanitizeId(mod)}[${mod}]\n`;
+    code += `    subgraph ${sanitizer.sanitizeId(mod)}[${escapeLabel(mod)}]\n`;
     modules[mod].forEach(step => {
       const stepId = sanitizer.sanitizeId(step.id);
-      code += `        ${stepId}["${step.name}"]:::action-node\n`;
+      code += `        ${stepId}["${escapeLabel(step.name)}"]:::action-node\n`;
       (step.actions || []).forEach(action => {
         const actionId = sanitizer.sanitizeId(action.id);
-        code += `        ${actionId}["${action.name}"]:::action-node\n`;
+        code += `        ${actionId}["${escapeLabel(action.name)}"]:::action-node\n`;
         code += `        ${stepId} --> ${actionId}\n`;
       });
     });

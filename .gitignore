@@ -3,6 +3,7 @@ package-lock.json
 test-results.txt
 dsl.sqlite
 dsl.sqlite.*.bak
+data/
 # Logs
 logs
 *.log

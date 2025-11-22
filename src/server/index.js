@@ -17,6 +17,8 @@ import { suggestModulesForText, analyzeSentenceAndSuggest } from '../core/sugges
 import { HistoryManager } from '../core/history.js';
 import { initSchema, saveWorkflow, saveEvent, saveWebhook, exportDatabase, importDatabase, getDBPath } from './db.js';
 import fs from 'fs';
+import { findDuplicateWorkflows } from '../core/validator.js';
+import { generateJSFromDSL } from '../core/generator.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -201,6 +203,13 @@ class DSLServer {
                 workflows: workflows.map(event => event.payload),
                 count: workflows.length
             });
+        });
+
+        // Find duplicate workflows by id
+        router.get('/duplicates', (req, res) => {
+            const workflows = this.engine.getEventsByType('WorkflowCreated').map(e => e.payload);
+            const result = findDuplicateWorkflows(workflows);
+            res.json(result);
         });
         
         // Get events
@@ -406,8 +415,13 @@ class DSLServer {
         // Serializer routes
         const serRouter = express.Router();
         serRouter.get('/export', (req, res) => {
-            const { format = 'json' } = req.query;
-            const workflows = this.engine.getEventsByType('WorkflowCreated').map(e => e.payload);
+            const { format = 'json', dedupe = 'false' } = req.query;
+            let workflows = this.engine.getEventsByType('WorkflowCreated').map(e => e.payload);
+            if (String(dedupe).toLowerCase() === 'true' || dedupe === '1'){
+                const map = new Map();
+                for (const wf of workflows){ if (!map.has(wf.id)) map.set(wf.id, wf); }
+                workflows = Array.from(map.values());
+            }
             try {
                 if (String(format).toLowerCase() === 'yaml') {
                     const y = exportWorkflowToYAML({ workflows });
@@ -440,6 +454,27 @@ class DSLServer {
             }
         });
         this.app.use('/api/serializer', serRouter);
+
+        // Code generator routes
+        const genRouter = express.Router();
+        genRouter.post('/js', (req, res) => {
+            try{
+                const { yaml: yamlText, json: jsonText } = req.body || {};
+                let input;
+                if (yamlText) input = String(yamlText);
+                else if (jsonText) input = String(jsonText);
+                else {
+                    const workflows = this.engine.getEventsByType('WorkflowCreated').map(e => e.payload);
+                    input = { workflows };
+                }
+                const code = generateJSFromDSL(input);
+                res.setHeader('Content-Type', 'application/javascript');
+                return res.send(code);
+            }catch(e){
+                return res.status(400).json({ error: 'Generation failed', message: e.message });
+            }
+        });
+        this.app.use('/api/generator', genRouter);
 
         // Projections routes
         const projRouter = express.Router();

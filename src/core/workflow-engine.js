@@ -360,7 +360,7 @@ export class WorkflowEngine {
                 .filter(a => a.length > 0);
             
             const workflowId = this.sanitizer.sanitizeId(condition);
-            const module = this.moduleMapper.getModuleForKeywords(condition + ' ' + actionsText.join(' '));
+            const module = this.moduleMapper.getModuleForKeywords(condition);
             
             const actions = actionsText.map((actionText, index) => ({
                 id: this.sanitizer.sanitizeId(`${workflowId}_action_${index + 1}`),
