@@ -70,12 +70,25 @@ steps:
     </a>
 </p>
 
+<h2>Baza danych (SQLite)</h2>
+<div style="display:flex; gap:10px; align-items:center; flex-wrap: wrap; margin-bottom: 10px;">
+    <button id="db-download-btn">⬇️ Pobierz bazę (sqlite)</button>
+    <input type="file" id="db-upload-input" accept=".sqlite,.db,application/x-sqlite3" />
+    <button id="db-upload-btn">⬆️ Wgraj bazę</button>
+    <button id="db-validate-btn">✅ Sprawdź bazę</button>
+    <span id="db-status" style="margin-left:10px;"></span>
+  </div>
+
+<h2>Przetwarzanie wielu zdań (NLP batch)</h2>
+<textarea id="multi-sentences-editor" placeholder="Wklej wiele zdań, każde w nowej linii lub oddzielone kropką"></textarea>
+<button id="process-multi-btn">Przetwórz wiele zdań</button>
+
 <script type="module">
     import { TextSanitizer } from "./src/core/sanitizer.js";
     import { ModuleMapper } from "./src/core/module-mapper.js";
     import { generateMermaid as genMermaid } from "./src/core/diagram.js";
     import { validateWorkflow as validateWF } from "./src/core/validator.js";
-    import { parseSentence, buildStep } from "./src/core/nlp.js";
+    import { parseSentence, buildStep, parseMultipleSentences } from "./src/core/nlp.js";
     import EventCore from "./src/core/event-store.js";
     import { saveState, loadState, saveYAML, loadYAML, hasStorage } from "./src/core/persistence.js";
     mermaid.initialize({startOnLoad:false, theme:'neutral'});

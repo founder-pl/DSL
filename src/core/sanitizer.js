@@ -80,9 +80,6 @@ export class TextSanitizer {
         // Replace spaces and invalid characters with hyphens
         result = result.replace(/[^a-z0-9-]/g, '-');
         
-        // Remove multiple hyphens
-        result = result.replace(/-+/g, '-');
-        
         // Remove leading and trailing hyphens
         result = result.replace(/^-|-$/g, '');
         

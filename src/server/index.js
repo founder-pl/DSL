@@ -9,6 +9,10 @@ import { dirname, join } from 'path';
 import { WorkflowEngine } from '../core/workflow-engine.js';
 import { TextSanitizer } from '../core/sanitizer.js';
 import { ModuleMapper } from '../core/module-mapper.js';
+import { generateMermaid } from '../core/diagram.js';
+import { parseMultipleSentences } from '../core/nlp.js';
+import { initSchema, saveWorkflow, saveEvent, saveWebhook, exportDatabase, importDatabase, getDBPath } from './db.js';
+import fs from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -23,6 +27,7 @@ class DSLServer {
         this.mapper = new ModuleMapper();
         
         this.setupMiddleware();
+        initSchema();
         this.setupRoutes();
         this.setupErrorHandling();
     }
@@ -100,17 +105,53 @@ class DSLServer {
                 }
                 
                 const result = await this.engine.createWorkflowFromNLP(sentence);
-                
+                // persist last workflow event
+                const workflowEvent = this.engine.getEventsByType('WorkflowCreated').slice(-1)[0];
+                if (workflowEvent?.payload) {
+                    await saveWorkflow(workflowEvent.payload);
+                }
                 res.json({
                     success: true,
                     result,
-                    workflow: this.engine.getEventsByType('WorkflowCreated').slice(-1)[0]
+                    workflow: workflowEvent
                 });
             } catch (error) {
                 res.status(400).json({
                     error: 'Failed to create workflow',
                     message: error.message
                 });
+            }
+        });
+        
+        // Create workflows from multiple sentences (extract and process)
+        router.post('/nlp/batch', async (req, res) => {
+            try {
+                const { text, sentences } = req.body || {};
+                const list = Array.isArray(sentences) && sentences.length ? sentences : parseMultipleSentences(String(text || ''));
+                if (!Array.isArray(list) || list.length === 0) {
+                    return res.status(400).json({ error: 'No valid sentences provided' });
+                }
+                const results = [];
+                for (const s of list) {
+                    try {
+                        const r = await this.engine.createWorkflowFromNLP(s);
+                        const wfEvent = this.engine.getEventsByType('WorkflowCreated').slice(-1)[0];
+                        if (wfEvent?.payload) await saveWorkflow(wfEvent.payload);
+                        // Generate diagram for a single-step workflow
+                        const diagram = generateMermaid({ steps: [{
+                            id: wfEvent.payload.id,
+                            name: wfEvent.payload.name,
+                            module: wfEvent.payload.module,
+                            actions: wfEvent.payload.actions
+                        }]});
+                        results.push({ sentence: s, success: true, diagram, workflow: wfEvent.payload });
+                    } catch (e) {
+                        results.push({ sentence: s, success: false, error: e.message });
+                    }
+                }
+                res.json({ processed: results.length, results });
+            } catch (error) {
+                res.status(400).json({ error: 'Batch NLP failed', message: error.message });
             }
         });
         
@@ -126,7 +167,9 @@ class DSLServer {
                 }
                 
                 const result = await this.engine.executeAction(actionName, context);
-                
+                // persist last action event
+                const actEvent = this.engine.getEventsByType('ActionExecuted').slice(-1)[0];
+                if (actEvent) await saveEvent(actEvent);
                 res.json({
                     success: true,
                     result,
@@ -335,6 +378,43 @@ class DSLServer {
         });
         
         this.app.use('/api/utils', router);
+
+        // Database routes
+        const dbRouter = express.Router();
+        // Download DB
+        dbRouter.get('/download', async (req, res) => {
+            try {
+                const buf = exportDatabase();
+                res.setHeader('Content-Type', 'application/x-sqlite3');
+                res.setHeader('Content-Disposition', 'attachment; filename="dsl.sqlite"');
+                res.send(buf);
+            } catch (e) {
+                res.status(500).json({ error: 'DB download failed', message: e.message });
+            }
+        });
+        // Upload DB (JSON {data: base64})
+        dbRouter.post('/upload', async (req, res) => {
+            try {
+                const { data } = req.body || {};
+                if (!data || typeof data !== 'string') return res.status(400).json({ error: 'Missing base64 data' });
+                const buffer = Buffer.from(data, 'base64');
+                importDatabase(buffer);
+                res.json({ success: true });
+            } catch (e) {
+                res.status(400).json({ error: 'DB upload failed', message: e.message });
+            }
+        });
+        // Validate DB
+        dbRouter.get('/validate', async (req, res) => {
+            try {
+                const path = getDBPath();
+                const exists = fs.existsSync(path);
+                res.json({ exists, path });
+            } catch (e) {
+                res.status(500).json({ error: 'DB validate failed', message: e.message });
+            }
+        });
+        this.app.use('/api/db', dbRouter);
     }
     
     setupTestingRoutes() {
@@ -411,6 +491,27 @@ class DSLServer {
         });
         
         this.app.use('/api/test', router);
+        
+        // Webhooks route (persist)
+        const webhooksRouter = express.Router();
+        webhooksRouter.post('/', async (req, res) => {
+            try {
+                const { url, events = [], config = {}, status = 'active' } = req.body || {};
+                if (!url) return res.status(400).json({ error: 'url required' });
+                const webhook = {
+                    id: `${Date.now()}-${Math.random().toString(36).substr(2,9)}`,
+                    url, events, config, status,
+                    createdAt: new Date().toISOString(),
+                    lastTriggered: null,
+                    triggerCount: 0
+                };
+                await saveWebhook(webhook);
+                res.json({ success: true, webhook });
+            } catch (e) {
+                res.status(400).json({ error: 'Save webhook failed', message: e.message });
+            }
+        });
+        this.app.use('/api/webhooks', webhooksRouter);
     }
     
     setupFrontendRoutes() {

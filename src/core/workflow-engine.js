@@ -6,8 +6,8 @@ import { ModuleMapper } from './module-mapper.js';
 
 export class WorkflowEngine {
     constructor() {
-        this.eventStore = [];
-        this.readModel = [];
+        this._eventStore = [];
+        this._readModel = [];
         this.sanitizer = new TextSanitizer();
         this.moduleMapper = new ModuleMapper();
         this.eventHandlers = new Map();
@@ -107,7 +107,7 @@ export class WorkflowEngine {
             }
         };
         
-        this.eventStore.push(eventWithMetadata);
+        this._eventStore.push(eventWithMetadata);
         
         // Process event handlers
         await this.processEvent(eventWithMetadata);
@@ -248,7 +248,7 @@ export class WorkflowEngine {
      * @returns {Array} - Filtered events
      */
     getEventsByType(eventType) {
-        return this.eventStore.filter(event => event.type === eventType);
+        return this._eventStore.filter(event => event.type === eventType).map(e => deepClone(e));
     }
 
     /**
@@ -258,10 +258,10 @@ export class WorkflowEngine {
      * @returns {Array} - Filtered events
      */
     getEventsByTimeRange(startDate, endDate) {
-        return this.eventStore.filter(event => {
+        return this._eventStore.filter(event => {
             const eventTime = new Date(event.metadata.timestamp);
             return eventTime >= startDate && eventTime <= endDate;
-        });
+        }).map(e => deepClone(e));
     }
 
     /**
@@ -269,7 +269,7 @@ export class WorkflowEngine {
      * @returns {Array} - Current read model
      */
     getReadModel() {
-        return [...this.readModel];
+        return this._readModel.map(e => deepClone(e));
     }
 
     /**
@@ -316,8 +316,8 @@ export class WorkflowEngine {
      */
     exportState() {
         return {
-            eventStore: [...this.eventStore],
-            readModel: [...this.readModel],
+            eventStore: this._eventStore.map(e => deepClone(e)),
+            readModel: this._readModel.map(e => deepClone(e)),
             statistics: this.getStatistics(),
             exportedAt: new Date().toISOString()
         };
@@ -331,10 +331,10 @@ export class WorkflowEngine {
     importState(state) {
         try {
             if (state.eventStore) {
-                this.eventStore = [...state.eventStore];
+                this._eventStore = state.eventStore.map(e => deepClone(e));
             }
             if (state.readModel) {
-                this.readModel = [...state.readModel];
+                this._readModel = state.readModel.map(e => deepClone(e));
             }
             return true;
         } catch (error) {
@@ -396,7 +396,7 @@ export class WorkflowEngine {
         // Event handlers
         this.registerEventHandler('WorkflowCreated', async (event) => {
             // Update read model with new workflow
-            this.readModel.push({
+            this._readModel.push({
                 type: 'workflow',
                 id: event.payload.id,
                 name: event.payload.name,
@@ -409,7 +409,7 @@ export class WorkflowEngine {
 
         this.registerEventHandler('ActionExecuted', async (event) => {
             // Update read model with executed action
-            this.readModel.push({
+            this._readModel.push({
                 type: 'action',
                 actionName: event.payload.actionName,
                 status: 'executed',
@@ -420,7 +420,7 @@ export class WorkflowEngine {
 
         this.registerEventHandler('ActionFailed', async (event) => {
             // Update read model with failed action
-            this.readModel.push({
+            this._readModel.push({
                 type: 'action',
                 actionName: event.payload.actionName,
                 status: 'failed',
@@ -433,3 +433,18 @@ export class WorkflowEngine {
 
 // Default export for convenience
 export default WorkflowEngine;
+
+// Utilities
+function deepClone(obj) {
+    return obj == null ? obj : JSON.parse(JSON.stringify(obj));
+}
+
+// Expose immutable properties via getters
+Object.defineProperties(WorkflowEngine.prototype, {
+    eventStore: {
+        get() { return this._eventStore.map(e => deepClone(e)); }
+    },
+    readModel: {
+        get() { return this._readModel.map(e => deepClone(e)); }
+    }
+});

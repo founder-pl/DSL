@@ -188,14 +188,24 @@ export class ModuleMapper {
      */
     validate() {
         const errors = [];
+        const warnings = [];
         const duplicateKeywords = {};
         
-        // Check for duplicate keywords across modules
-        for (const [module, keywords] of Object.entries(this.moduleMap)) {
+        // Basic schema checks
+        if (!this.moduleMap || typeof this.moduleMap !== 'object') {
+            errors.push('moduleMap is not an object');
+        }
+        
+        // Check for duplicate keywords across modules (warning only)
+        for (const [module, keywords] of Object.entries(this.moduleMap || {})) {
+            if (!Array.isArray(keywords)) {
+                errors.push(`Keywords for module ${module} must be an array`);
+                continue;
+            }
             keywords.forEach(keyword => {
-                const lowerKeyword = keyword.toLowerCase();
-                if (duplicateKeywords[lowerKeyword]) {
-                    errors.push(`Duplicate keyword '${keyword}' in modules: ${duplicateKeywords[lowerKeyword]} and ${module}`);
+                const lowerKeyword = String(keyword).toLowerCase();
+                if (duplicateKeywords[lowerKeyword] && duplicateKeywords[lowerKeyword] !== module) {
+                    warnings.push(`Duplicate keyword '${keyword}' in modules: ${duplicateKeywords[lowerKeyword]} and ${module}`);
                 } else {
                     duplicateKeywords[lowerKeyword] = module;
                 }
@@ -203,8 +213,9 @@ export class ModuleMapper {
         }
         
         return {
-            isValid: errors.length === 0,
-            errors
+            isValid: errors.length === 0, // duplicates do not invalidate config
+            errors,
+            warnings
         };
     }
 

@@ -51,4 +51,24 @@ export function buildStep(condition, actions, sanitizer = new TextSanitizer(), m
   };
 }
 
+/**
+ * Parse multiple sentences from a text blob. Returns array of sentence strings
+ * Only sentences matching the expected "Gdy ..., ..." pattern are returned.
+ * @param {string} text
+ * @returns {string[]}
+ */
+export function parseMultipleSentences(text) {
+  if (typeof text !== 'string') return [];
+  // Split by newlines or period followed by space/newline
+  const chunks = text
+    .split(/\n+|(?<=[\.\!\?])\s+/)
+    .map(s => s.trim())
+    .filter(Boolean);
+  const valid = [];
+  for (const c of chunks) {
+    if (/^Gdy\s+.+?,\s+.+/i.test(c)) valid.push(c.replace(/[\.!?]+$/, ''));
+  }
+  return valid;
+}
+
 export default { parseSentence, buildStep };
