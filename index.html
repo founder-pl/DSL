@@ -7,6 +7,8 @@
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
     <script src="advanced-features.js"></script>
+    <link rel="stylesheet" href="/common/nav.css">
+    <script src="/common/nav.js" defer></script>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; }
         textarea { width: 100%; height: 100px; font-family: monospace; margin-bottom: 10px; }
@@ -572,9 +574,29 @@ steps:
                     return;
                 }
             }
-        }catch(err1){ console.log('NLP standard nie odpowiada, próbuję deep analysis...', err1.message); }
+        }catch(err1){ console.log('NLP standard nie odpowiada, próbuję normalize...', err1.message); }
 
-        // 2) Deep Analysis API dla swobodnych zdań
+        // 2) Normalizacja wielojęzyczna + autokorekta (heurystyki + opcjonalny LLM)
+        try{
+            const respN = await fetch('/api/analysis/normalize', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: sentence, llm: true, options: { baseUrl: location.origin } })
+            });
+            const dataN = await respN.json();
+            if (respN.ok && dataN.success && dataN.step){
+                const s = dataN.step;
+                const wf = jsyaml.load(document.getElementById("yaml-editor").value);
+                wf.steps.push({ id: s.id, name: s.name, module: s.module, actions: s.actions });
+                document.getElementById("yaml-editor").value = jsyaml.dump(wf);
+                renderDiagram(wf);
+                (s.actions||[]).forEach(a=>sendCommand(a.name));
+                document.getElementById("sentence-editor").value="";
+                console.log(`✓ Workflow utworzony przez /api/analysis/normalize (${dataN.source})`);
+                return;
+            }
+        }catch(errN){ console.log('Normalize nie powiodło się, próbuję deep analysis...', errN.message); }
+
+        // 3) Deep Analysis API dla swobodnych zdań
         try{
             const resp2 = await fetch('/api/analysis/deep', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -598,7 +620,7 @@ steps:
             }
         }catch(errDeep){ console.log('Deep analysis nie odpowiada, próbuję lokalny parser...', errDeep.message); }
 
-        // 3) Ostateczny fallback: lokalny parser "Gdy ..., ..."
+        // 4) Ostateczny fallback: lokalny parser "Gdy ..., ..."
         try{
             const step = await localParse();
             const workflow = jsyaml.load(document.getElementById("yaml-editor").value);

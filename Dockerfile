@@ -1,8 +1,11 @@
 # DSL Server Dockerfile
-FROM node:20-alpine
+FROM node:20-bookworm-slim
 
 # Tools needed by generated scripts and healthchecks
-RUN apk add --no-cache bash curl jq
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        bash curl jq ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

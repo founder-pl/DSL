@@ -21,6 +21,7 @@ import { spawn } from 'child_process';
 import { findDuplicateWorkflows } from '../core/validator.js';
 import { generateJSFromDSL, buildScaffolds, toWorkflows } from '../core/generator.js';
 import { deepAnalyze } from '../core/deep-analysis.js';
+import { normalizeToWorkflow, normalizeWithLLM } from '../core/normalizer.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -78,6 +79,26 @@ class DSLServer {
                 return res.json({ ...analysis, files, workflowApplied });
             }catch(e){
                 return res.status(500).json({ error:'deep analysis failed', message: e.message });
+            }
+        });
+
+        router.post('/normalize', async (req, res) => {
+            try{
+                const { text, llm = true, options = {} } = req.body || {};
+                if (!text || typeof text !== 'string') return res.status(400).json({ error:'text required' });
+                const norm = await normalizeToWorkflow(text, { lang: options.lang });
+                if (norm?.ok && norm.step && (norm.step.actions||[]).length){
+                    return res.json({ success:true, source:'normalize', step: norm.step, lang: norm.lang });
+                }
+                if (llm){
+                    const llmRes = await normalizeWithLLM(text, options.llm||{});
+                    if (llmRes?.ok && llmRes.step){
+                        return res.json({ success:true, source:'llm', step: llmRes.step, lang: llmRes.lang||norm?.lang });
+                    }
+                }
+                return res.status(422).json({ success:false, error:'normalization_failed' });
+            }catch(e){
+                return res.status(500).json({ success:false, error:'normalize_failed', message: e.message });
             }
         });
 

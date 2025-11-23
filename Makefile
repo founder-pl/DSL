@@ -85,7 +85,7 @@ setup: install
 start:
 	@echo "🐳 Uruchamianie Docker Compose..."
 	@if command -v docker-compose >/dev/null 2>&1; then \
-		docker-compose up --build -d; \
+		docker-compose up --build; \
 		echo "✅ Docker Compose uruchomiony!"; \
 		echo "📱 Aplikacja dostępna na: http://localhost:3000"; \
 		echo "📊 Logi: docker-compose logs -f"; \
@@ -123,6 +123,18 @@ start-dev:
 		python -m SimpleHTTPServer 8080; \
 	else \
 		echo "❌ Brak dostępnego serwera HTTP"; \
+		exit 1; \
+	fi
+# Uruchomienie Docker Compose
+start-test:
+	@echo "🐳 Uruchamianie Docker Compose..."
+	@if command -v docker-compose >/dev/null 2>&1; then \
+		docker-compose -f docker-compose.test.yml up --build; \
+		echo "✅ Docker Compose uruchomiony!"; \
+		echo "📱 Aplikacja dostępna na: http://localhost:3000"; \
+		echo "📊 Logi: docker-compose logs -f"; \
+	else \
+		echo "❌ docker-compose nie znaleziony - zainstaluj Docker Compose"; \
 		exit 1; \
 	fi
 
