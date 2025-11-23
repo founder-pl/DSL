@@ -524,16 +524,41 @@ steps:
         // Helper: lokalny parser z import w runtime (fallback)
         const localParse = async () => {
             try {
-                // Importuj moduły z backendu (nie będzie działać w przeglądarce bez bundlera)
-                // Użyjemy prostego fallback parsera
-                const match = sentence.match(/Gdy\s+(.+?),\s+(.+)/i);
-                if (!match) throw new Error('Format zdania musi być: "Gdy [warunek], [akcje]"');
-                const condition = match[1].trim();
-                const actionsText = match[2]
-                    .split(/\s+(?:i|oraz|a także|następnie)\s+/i)
+                // Fallback parser: wielojęzyczny, bezwzględny na przecinki
+                const s = String(sentence||'').trim();
+                const marker = /^(gdy|kiedy|jeśli|jesli|when|if|cuando|si|wenn|falls|quand|se|quando)\s+/i;
+                const actionVerbs = /(wyślij|wyslij|powiadom|zaktualizuj|dodaj|wystaw|uruchom|prześlij|przeslij|send|notify|create|update|add|run|dispatch|email)\b/i;
+
+                let condition = '';
+                let tail = '';
+
+                // 1) Próba z markerem i separacją (przecinek/"to"/"wtedy"/myślnik)
+                let m = s.match(/^(?:gdy|kiedy|jeśli|jesli|when|if|cuando|si|wenn|falls|quand|se|quando)\s+(.+?)(?:,|:|-|\s+(?:to|wtedy)\s+)\s*(.+)$/i);
+                if (m){ condition = m[1]; tail = m[2]; }
+
+                // 2) Bez separatora – podział na granicy czasownika akcyjnego
+                if (!condition){
+                    const stripped = s.replace(marker, '');
+                    const vb = stripped.match(actionVerbs);
+                    if (vb && vb.index > 3){
+                        condition = stripped.slice(0, vb.index).trim();
+                        tail = stripped.slice(vb.index).trim();
+                    }
+                }
+
+                // 3) Ostatecznie: klasyczny wzorzec "Gdy ..., ..."
+                if (!condition){
+                    const classic = s.match(/Gdy\s+(.+?),\s+(.+)/i);
+                    if (classic){ condition = classic[1]; tail = classic[2]; }
+                }
+
+                if (!condition || !tail) throw new Error('Brak rozdzielenia warunku i akcji');
+
+                const actionsText = tail
+                    .split(/\s+(?:i|oraz|a także|następnie|and|then)\s+/i)
                     .map(a => a.trim().replace(/\.$/, ''))
                     .filter(a => a.length > 0);
-                
+
                 const stepId = sanitizer.sanitizeId(condition);
                 const stepModule = mapper.getModuleForKeywords(condition + ' ' + actionsText.join(' '));
                 const stepActions = actionsText.map((a, i) => ({
@@ -541,13 +566,8 @@ steps:
                     name: a,
                     module: mapper.getModuleForKeywords(a)
                 }));
-                
-                return {
-                    id: stepId,
-                    name: condition,
-                    module: stepModule,
-                    actions: stepActions
-                };
+
+                return { id: stepId, name: condition, module: stepModule, actions: stepActions };
             } catch (e) {
                 throw new Error('Nie można sparsować zdania lokalnie: ' + e.message);
             }
