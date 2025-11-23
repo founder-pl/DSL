@@ -1,7 +1,7 @@
 # Founder.pl DSL - Makefile
 # Automatyzacja zadań deweloperskich i testowych
 
-.PHONY: help install start test validate clean dev build deploy docs
+.PHONY: help install start stop start-dev test validate clean dev build deploy docs server server-dev
 
 # Domyślne zadanie - pomoc
 help:
@@ -12,9 +12,11 @@ help:
 	@echo "  make setup       - Pierwsza konfiguracja projektu"
 	@echo ""
 	@echo "🏃 Uruchamianie:"
-	@echo "  make start       - Uruchamia serwer deweloperski"
+	@echo "  make start       - Uruchamia Docker Compose (build + up)"
+	@echo "  make stop        - Zatrzymuje wszystkie usługi (Node.js + Docker)"
 	@echo "  make dev         - Uruchamia w trybie deweloperskim z hot reload"
 	@echo "  make serve       - Uruchamia prosty serwer HTTP"
+	@echo "  make server      - Uruchamia serwer Node.js lokalnie (port 3000)"
 	@echo ""
 	@echo "🧪 Testowanie:"
 	@echo "  make test        - Uruchamia wszystkie testy (Node.js lub alternatywne)"
@@ -79,9 +81,34 @@ setup: install
 	@echo "✅ Struktura katalogów utworzona"
 	@echo "✅ Projekt skonfigurowany pomyślnie!"
 
-# Uruchomienie serwera deweloperskiego
+# Uruchomienie Docker Compose
 start:
-	@echo "🚀 Uruchamianie serwera deweloperskiego..."
+	@echo "🐳 Uruchamianie Docker Compose..."
+	@if command -v docker-compose >/dev/null 2>&1; then \
+		docker-compose up --build -d; \
+		echo "✅ Docker Compose uruchomiony!"; \
+		echo "📱 Aplikacja dostępna na: http://localhost:3000"; \
+		echo "📊 Logi: docker-compose logs -f"; \
+	else \
+		echo "❌ docker-compose nie znaleziony - zainstaluj Docker Compose"; \
+		exit 1; \
+	fi
+
+# Zatrzymanie wszystkich usług
+stop:
+	@echo "🛑 Zatrzymywanie wszystkich usług..."
+	@echo "Zatrzymywanie Node.js..."
+	-@pkill -f "node src/server/index.js" 2>/dev/null || true
+	-@pkill -f "node --watch src/server/index.js" 2>/dev/null || true
+	-@pkill -f "npm run dev" 2>/dev/null || true
+	-@lsof -ti:3000 | xargs kill -9 2>/dev/null || true
+	@echo "Zatrzymywanie Docker Compose..."
+	-@docker-compose down 2>/dev/null || true
+	@echo "✅ Wszystkie usługi zatrzymane!"
+
+# Uruchomienie live-server (alternatywnie)
+start-dev:
+	@echo "🚀 Uruchamianie serwera deweloperskiego (live-server)..."
 	@if command -v live-server >/dev/null 2>&1; then \
 		echo "🌐 Uruchamianie live-server na http://localhost:8080"; \
 		live-server --port=8080 --open=index.html; \

@@ -12,9 +12,12 @@
     .main { flex: 1; display: flex; flex-direction: column; }
     .toolbar { padding: 10px; background: #eee; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
     .canvas { flex: 1; position: relative; overflow: hidden; background: #fff; }
-    .node { position: absolute; padding: 10px; background: #e3f2fd; border: 2px solid #2196f3; border-radius: 4px; cursor: move; user-select: none; min-width: 120px; }
+    #connections-svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
+    .node { position: absolute; padding: 10px; background: #e3f2fd; border: 2px solid #2196f3; border-radius: 4px; cursor: move; user-select: none; min-width: 120px; z-index: 1; }
     .node.selected { border-color: #ff6600; box-shadow: 0 0 8px rgba(255,102,0,0.5); }
     .action-node { background: #fff3e0; border-color: #ff9800; }
+    .connection-line { stroke: #2196f3; stroke-width: 2; fill: none; }
+    .connection-arrow { fill: #2196f3; }
     .btn { padding: 6px 10px; }
     .small { font-size: 12px; color: #666; }
     #status { margin-left: 10px; color: #555; }
@@ -46,7 +49,9 @@
       <button id="auto-layout" class="btn">🎯 Auto-układ</button>
       <span id="status"></span>
     </div>
-    <div class="canvas" id="canvas"></div>
+    <div class="canvas" id="canvas">
+      <svg id="connections-svg"></svg>
+    </div>
   </div>
 
   <script type="module">
@@ -70,9 +75,47 @@
         const r = await fetch('/api/workflow/db/workflows');
         const data = await r.json();
         workflows = Array.isArray(data?.workflows) ? data.workflows : [];
+        
+        // Konwertuj workflows na nodes do wyświetlenia
+        nodes = [];
+        let x = 50, y = 50;
+        workflows.forEach((wf, wfIdx) => {
+          // Dodaj step node
+          const stepNode = {
+            id: `step_${wf.id}`,
+            type: 'step',
+            data: { id: wf.id, name: wf.name, module: wf.module || 'Default' },
+            x: x,
+            y: y
+          };
+          nodes.push(stepNode);
+          
+          // Dodaj action nodes
+          if (Array.isArray(wf.actions)) {
+            wf.actions.forEach((action, actIdx) => {
+              const actionNode = {
+                id: `action_${wf.id}_${actIdx}`,
+                type: 'action',
+                data: { id: action.id, name: action.name, module: action.module || 'Default' },
+                parentStepId: wf.id,
+                x: x + 250,
+                y: y + (actIdx * 80)
+              };
+              nodes.push(actionNode);
+            });
+          }
+          
+          // Update position for next workflow
+          y += Math.max(150, (wf.actions?.length || 1) * 80 + 50);
+          if (y > 600) {
+            y = 50;
+            x += 600;
+          }
+        });
+        
         renderNodes();
         updateStepsList();
-        status(`Wczytano ${workflows.length} kroków`);
+        status(`Wczytano ${workflows.length} kroków z ${nodes.length} elementami`);
       }catch(e){ status('Błąd wczytywania: '+e.message); }
     });
 
@@ -119,21 +162,63 @@
     document.getElementById('zoom-out').addEventListener('click', () => { scale = Math.max(scale-0.1, 0.5); applyZoom(); });
     function applyZoom(){ canvas.style.transform = `scale(${scale})`; canvas.style.transformOrigin = 'top left'; }
 
-    // Auto-layout (prosty grid)
+    // Auto-layout (inteligentny grid dla steps i actions)
     document.getElementById('auto-layout').addEventListener('click', () => {
-      let x = 20, y = 20;
-      nodes.forEach((n,i) => {
-        n.x = x; n.y = y;
-        x += 200;
-        if ((i+1) % 4 === 0){ x = 20; y += 120; }
+      // Grupuj nodes po workflow (step + jego actions)
+      const workflows = new Map();
+      
+      // Zbierz steps
+      nodes.filter(n => n.type === 'step').forEach(step => {
+        workflows.set(step.data.id, { step, actions: [] });
       });
+      
+      // Przypisz actions do steps
+      nodes.filter(n => n.type === 'action').forEach(action => {
+        const wf = workflows.get(action.parentStepId);
+        if (wf) wf.actions.push(action);
+      });
+      
+      // Layout
+      let x = 50, y = 50;
+      const STEP_WIDTH = 180;
+      const ACTION_OFFSET = 280;
+      const ROW_HEIGHT = 100;
+      const WORKFLOW_SPACING = 50;
+      
+      workflows.forEach(wf => {
+        // Position step
+        wf.step.x = x;
+        wf.step.y = y;
+        
+        // Position actions (stacked vertically next to step)
+        wf.actions.forEach((action, idx) => {
+          action.x = x + ACTION_OFFSET;
+          action.y = y + (idx * ROW_HEIGHT);
+        });
+        
+        // Move to next row
+        const maxActionsHeight = Math.max(wf.actions.length * ROW_HEIGHT, ROW_HEIGHT);
+        y += maxActionsHeight + WORKFLOW_SPACING;
+        
+        // Wrap to new column if too tall
+        if (y > 700) {
+          y = 50;
+          x += STEP_WIDTH + ACTION_OFFSET + 250;
+        }
+      });
+      
       renderNodes();
-      status('Zastosowano auto-układ');
+      status('Zastosowano inteligentny auto-układ');
     });
 
     // Render nodes on canvas
     function renderNodes(){
-      canvas.innerHTML = '';
+      // Clear existing nodes (but keep SVG)
+      const svg = document.getElementById('connections-svg');
+      const existingNodes = canvas.querySelectorAll('.node');
+      existingNodes.forEach(node => node.remove());
+      
+      // Render nodes
       nodes.forEach(n => {
         const div = document.createElement('div');
         div.className = 'node' + (n.type === 'action' ? ' action-node' : '');
@@ -144,6 +229,51 @@
         div.onclick = (e) => { e.stopPropagation(); selectNode(n); };
         n.element = div;
         canvas.appendChild(div);
+      });
+      
+      // Draw connections
+      drawConnections();
+    }
+    
+    // Draw SVG connections between step nodes and their actions
+    function drawConnections(){
+      const svg = document.getElementById('connections-svg');
+      svg.innerHTML = ''; // Clear existing lines
+      
+      // Find all step-action pairs
+      nodes.forEach(stepNode => {
+        if (stepNode.type !== 'step') return;
+        
+        // Find actions belonging to this step
+        const actions = nodes.filter(n => n.type === 'action' && n.parentStepId === stepNode.data.id);
+        
+        actions.forEach(actionNode => {
+          // Calculate connection points
+          const stepRect = stepNode.element.getBoundingClientRect();
+          const actionRect = actionNode.element.getBoundingClientRect();
+          const canvasRect = canvas.getBoundingClientRect();
+          
+          // Start point: right middle of step node
+          const x1 = stepNode.x + (stepRect.width / scale);
+          const y1 = stepNode.y + (stepRect.height / 2 / scale);
+          
+          // End point: left middle of action node
+          const x2 = actionNode.x;
+          const y2 = actionNode.y + (actionRect.height / 2 / scale);
+          
+          // Create curved line (bezier)
+          const midX = (x1 + x2) / 2;
+          const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+          path.setAttribute('d', `M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`);
+          path.setAttribute('class', 'connection-line');
+          svg.appendChild(path);
+          
+          // Add arrow
+          const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+          arrow.setAttribute('points', `${x2-8},${y2-4} ${x2},${y2} ${x2-8},${y2+4}`);
+          arrow.setAttribute('class', 'connection-arrow');
+          svg.appendChild(arrow);
+        });
       });
     }
 
@@ -171,6 +301,7 @@
       dragNode.y = (e.clientY - canvasRect.top - offsetY) / scale;
       dragNode.element.style.left = dragNode.x + 'px';
       dragNode.element.style.top = dragNode.y + 'px';
+      drawConnections(); // Redraw connections while dragging
     });
 
     document.addEventListener('mouseup', () => { dragNode = null; });

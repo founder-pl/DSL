@@ -20,11 +20,11 @@ services:
       - API_BASE_URL=${API_BASE_URL:-http://localhost:3000}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:${PORT:-3000}/api/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
+      test: ["CMD", "curl", "-f", "http://localhost:${PORT:-3000}/api/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
     volumes:
       - ./generated:/app/generated
       - ./data:/app/data
